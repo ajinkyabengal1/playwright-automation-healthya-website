@@ -1,0 +1,31 @@
+node_modules/
+
+# Playwright artifacts
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Build/cache outputs
+dist/
+build/
+coverage/
+.cache/
+*.tsbuildinfo
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
