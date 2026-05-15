@@ -2,11 +2,17 @@ const express = require("express");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const multer = require("multer");
+const xlsx = require("xlsx");
 
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "dashboard-public")));
 app.use("/test-results", express.static(path.join(__dirname, "test-results")));
+
+// Configure multer for memory storage
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 
 app.use(
   "/trace-viewer",
@@ -470,33 +476,48 @@ function journeysForStep(step) {
 async function detectFlowFromResolvedUrl(url) {
   const { chromium } = require("@playwright/test");
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 1000 },
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+  });
+  const page = await context.newPage();
   try {
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 });
-    await page.waitForTimeout(1200);
+    await page.goto(url, { waitUntil: "networkidle", timeout: 45_000 }).catch(() => 
+      page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 })
+    );
+    
+    // Wait for the introduction wrapper or a fallback
+    await page.waitForSelector('.introduction-wrapper, button:has-text("Get Started")', { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(2000); // Give it a bit more time to render text
 
     // Detect "How it works" points to predict journey BEFORE clicking "Get Started"
     const predictedJourney = await page.evaluate(() => {
       // Look for the "How it works" section specifically if possible
       const introWrapper = document.querySelector(".introduction-wrapper");
       const searchContext = introWrapper || document.body;
-      const allText = searchContext.innerText || "";
+      
+      // Try multiple ways to get text
+      const allText = searchContext.innerText || searchContext.textContent || "";
       const text = allText.toLowerCase();
 
-      const pointA = "receive advice and treatment";
-      const pointB = "checking your symptoms";
-      const pointC = "book your appointment";
+      // More robust patterns for the journey steps
+      const pointPatterns = [
+        { label: "Sign Up", patterns: ["receive advice", "treatment", "personal details", "contact details", "sign up", "register", "create account"] },
+        { label: "Questionnaire", patterns: ["checking your symptoms", "medical questions", "assessment", "questionnaire", "clinical questions", "medical history"] },
+        { label: "Booking", patterns: ["book your appointment", "select a slot", "choose a time", "appointment time", "booking", "schedule", "appointment date"] }
+      ];
 
       const points = [];
 
-      // Look for the strings and their approximate positions
-      const idxA = text.indexOf(pointA);
-      const idxB = text.indexOf(pointB);
-      const idxC = text.indexOf(pointC);
-
-      if (idxA !== -1) points.push({ label: "signup", idx: idxA });
-      if (idxB !== -1) points.push({ label: "questionnaire", idx: idxB });
-      if (idxC !== -1) points.push({ label: "booking page", idx: idxC });
+      pointPatterns.forEach(point => {
+        for (const p of point.patterns) {
+          const idx = text.indexOf(p.toLowerCase());
+          if (idx !== -1) {
+            points.push({ label: point.label, idx: idx });
+            break; // Found one pattern for this point
+          }
+        }
+      });
 
       // Sort by appearance order on the page
       points.sort((a, b) => a.idx - b.idx);
@@ -514,10 +535,16 @@ async function detectFlowFromResolvedUrl(url) {
     const getStartedVisible = await getStartedBtn
       .isVisible()
       .catch(() => false);
-    if (getStartedVisible) {
+
+    // ONLY click Get Started if we actually detected journey data (the "How it works" points)
+    // or if we are reasonably sure it's a landing page but maybe text extraction missed something.
+    // The user specifically asked NOT to click if journey data is not detected.
+    if (getStartedVisible && predictedJourney) {
       await getStartedBtn.click().catch(() => {});
       await page.waitForLoadState("domcontentloaded").catch(() => {});
-      await page.waitForTimeout(1200);
+      await page.waitForTimeout(1500);
+    } else if (getStartedVisible && !predictedJourney) {
+      console.log("Landing page detected but no journey data found in text; skipping Get Started click per requirement.");
     }
 
     const hasVisible = async (selectors) => {
@@ -619,6 +646,45 @@ app.get("/api/tests", async (_req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+app.post("/api/upload-links", (req, res) => {
+  upload.single("file")(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ error: "File upload error: " + err.message });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    try {
+      const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
+      const links = new Set();
+      const urlPattern = /https?:\/\/[^\s"'<>]+/g;
+
+      workbook.SheetNames.forEach((sheetName) => {
+        const sheet = workbook.Sheets[sheetName];
+        const data = xlsx.utils.sheet_to_json(sheet, { header: 1 });
+
+        data.forEach((row) => {
+          if (Array.isArray(row)) {
+            row.forEach((cell) => {
+              if (cell && typeof cell === "string") {
+                const matches = cell.match(urlPattern);
+                if (matches) {
+                  matches.forEach((link) => links.add(link));
+                }
+              }
+            });
+          }
+        });
+      });
+
+      res.json({ links: Array.from(links) });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to parse file: " + e.message });
+    }
+  });
 });
 
 app.get("/api/resolve-healthya-link", async (req, res) => {
