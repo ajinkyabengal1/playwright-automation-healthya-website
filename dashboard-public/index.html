@@ -1529,6 +1529,7 @@
         id="btn-run-all"
         disabled
         title="Run all tests for selected pharmacy"
+        style="display: none"
       >
         ▶ Run All
       </button>
@@ -2165,7 +2166,7 @@
       const JOURNEY_LABELS = {
         nhs: "NHS",
         private: "PRIVATE",
-        lifestyle: "LIFESTYLE",
+        lifestyle: "Test Scenario",
         eligibility: "ELIGIBILITY",
         user_journey: "USER JOURNEY",
         booking: "BOOKING",
@@ -2365,9 +2366,9 @@
         }
       }
 
-      async function analyzeHealthyaLink(rawUrl) {
+      async function analyzeHealthyaLink(rawUrl, skipDetection = false) {
         const r = await fetch(
-          `/api/analyze-healthya-link?url=${encodeURIComponent(rawUrl)}`,
+          `/api/analyze-healthya-link?url=${encodeURIComponent(rawUrl)}&skipDetection=${skipDetection}`,
         );
         if (!r.ok) throw new Error("Failed to analyze link");
         return r.json();
@@ -3227,7 +3228,8 @@
           addRunLog(runId, `Analyzing link: ${rawLink}`, "log-start");
           customLinkInput.value = rawLink;
           try {
-            const analysis = await analyzeHealthyaLink(rawLink);
+            // Speed up: skip expensive browser-based detection during batch runs
+            const analysis = await analyzeHealthyaLink(rawLink, true);
             healthyaAnalysis = analysis;
             finalBaseURL = analysis.baseURL;
             finalStartUrl = analysis.resolved;
