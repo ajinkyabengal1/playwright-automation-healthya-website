@@ -607,8 +607,18 @@ async function runConditionFlowImpl(
             );
           }
         }
-        await questionnaire.waitForPage();
-        await questionnaire.answerAllQuestions();
+        try {
+          console.log("→ [run-flow] questionnaire.waitForPage() start");
+          await questionnaire.waitForPage();
+          console.log("→ [run-flow] questionnaire.waitForPage() done");
+          console.log("→ [run-flow] questionnaire.answerAllQuestions() start");
+          await questionnaire.answerAllQuestions();
+          console.log("→ [run-flow] questionnaire.answerAllQuestions() done");
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.log(`✗ [run-flow] questionnaire step failed: ${message}`);
+          throw err;
+        }
         break;
       }
 

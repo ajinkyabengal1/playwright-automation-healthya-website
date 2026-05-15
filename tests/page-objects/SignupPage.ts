@@ -742,6 +742,49 @@ export class SignupPage {
   }
 
   /**
+   * Automatically detect and check mandatory checkboxes (T&C, Privacy Policy, Consent).
+   */
+  async handleMandatoryCheckboxes() {
+    const selectors = [
+      'input[type="checkbox"]',
+      '[role="checkbox"]',
+      ".ant-checkbox-input",
+      "label:has-text('agree')",
+      "label:has-text('terms')",
+      "label:has-text('policy')",
+      "label:has-text('conditions')",
+    ];
+
+    const checkboxScope = this.getContactFormScope();
+    const candidates = checkboxScope.locator(selectors.join(", "));
+    const count = await candidates.count().catch(() => 0);
+
+    for (let i = 0; i < count; i++) {
+      const el = candidates.nth(i);
+      const text = await el.textContent().catch(() => "");
+      const isVisible = await el.isVisible().catch(() => false);
+      if (!isVisible) continue;
+
+      // Look for the actual input or clickable area
+      const input = el.locator('input[type="checkbox"], .ant-checkbox-inner, .ant-checkbox').first();
+      const target = (await input.count()) > 0 ? input : el;
+
+      const isChecked = await target.evaluate((node) => {
+        if (node.tagName === 'INPUT') return (node as HTMLInputElement).checked;
+        const inputInside = node.querySelector('input[type="checkbox"]');
+        if (inputInside) return (inputInside as HTMLInputElement).checked;
+        return node.getAttribute('aria-checked') === 'true' || node.classList.contains('ant-checkbox-checked') || node.classList.contains('ant-checkbox-wrapper-checked');
+      }).catch(() => false);
+
+      if (!isChecked) {
+        console.log(`[SignupPage] Checking mandatory checkbox: "${text.trim().slice(0, 50)}..."`);
+        await target.click({ force: true }).catch(() => {});
+        await this.page.waitForTimeout(300);
+      }
+    }
+  }
+
+  /**
    * Fill contact details inside the modal that opens after clicking the
    * private-consultation link (or directly when record was matched).
    *
@@ -780,7 +823,7 @@ export class SignupPage {
       await inp.press("Backspace");
       await this.page.waitForTimeout(80);
       await inp.pressSequentially(normalizedPhone, { delay: 60 });
-      await this.page.waitForTimeout(150);
+      await this.page.waitForTimeout(1500);
 
       // Blur to run field-level Formik validation
       await inp.press("Tab");
@@ -850,6 +893,9 @@ export class SignupPage {
 
       console.log("[SignupPage] Guardian name filled");
     }
+
+    // ── Checkboxes (T&C, Policy) ─────────────────────────────────────────────
+    await this.handleMandatoryCheckboxes();
 
     // Let Formik batch all setFieldValue calls and re-render
     await this.page.waitForTimeout(700);

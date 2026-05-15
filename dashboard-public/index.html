@@ -700,6 +700,44 @@
       body.rsz-dragging-h { cursor: col-resize !important; user-select: none; }
       body.rsz-dragging-v { cursor: row-resize !important; user-select: none; }
 
+      /* Journey Stepper */
+      .journey-stepper {
+        display: flex;
+        flex-direction: row;
+        gap: 0;
+        padding: 10px 14px;
+        overflow-x: auto;
+      }
+      .journey-step {
+        flex: 1;
+        text-align: center;
+        padding: 6px 4px;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        border: 1px solid var(--clr-border);
+        color: var(--clr-txt-muted);
+        background: var(--clr-surface);
+        white-space: nowrap;
+        min-width: 80px;
+      }
+      .journey-step:first-child {
+        border-top-left-radius: 6px;
+        border-bottom-left-radius: 6px;
+      }
+      .journey-step:last-child {
+        border-top-right-radius: 6px;
+        border-bottom-right-radius: 6px;
+      }
+      .journey-step:not(:last-child) {
+        border-right: none;
+      }
+      .journey-step.active {
+        background: #5b82f6;
+        color: #ffffff;
+        border-color: #5b82f6;
+        z-index: 1;
+      }
 
       /* Responsive */
       @media (max-width: 680px) {
@@ -716,6 +754,7 @@
       <div class="title">Playwright <span>Runner</span></div>
       <div id="custom-link-wrap">
         <input id="custom-link-input" type="url" placeholder="Paste QR/API link and click Run Link Flow" />
+        <button id="btn-add-link" class="hdr-btn" title="Add to multi-link queue" style="padding: 0 10px; background: var(--clr-surface); color: var(--clr-accent); border: 1px solid var(--clr-border-drk);">+</button>
         <button class="hdr-btn" id="btn-run-link-flow" type="button">Run Link Flow</button>
       </div>
       <div class="spacer"></div>
@@ -746,6 +785,20 @@
       <nav id="sidebar">
         <div id="search-wrap">
           <input id="search" type="search" placeholder="Search test cases..." autocomplete="off" />
+        </div>
+        <div id="link-queue-wrap" style="display:none; flex-shrink: 0; border-bottom: 1px solid var(--clr-border); padding-bottom: 8px; background: var(--clr-sidebar-alt);">
+          <div id="link-queue-hdr" style="padding: 10px 14px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--clr-txt-muted); letter-spacing: .06em;">Pending Links (0)</div>
+          <div id="link-queue-list" style="padding: 4px 14px; max-height: 120px; overflow-y: auto;"></div>
+          <div style="padding: 4px 14px; display: flex; gap: 8px;">
+            <button id="btn-run-queued-links" class="hdr-btn" style="flex:1; height:24px; font-size:10px; background: var(--clr-accent);">Run All Links</button>
+            <button id="btn-clear-queued-links" class="hdr-btn" style="flex:0.4; height:24px; font-size:10px; background: var(--clr-surface); color: var(--clr-fail); border: 1px solid var(--clr-fail);">Clear</button>
+          </div>
+        </div>
+        <div id="journey-wrap" style="display:none; flex-shrink: 0; border-bottom: 1px solid var(--clr-border); padding-bottom: 8px;">
+          <div id="journey-hdr" style="padding: 10px 14px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--clr-txt-muted); letter-spacing: .06em;">Journey Flow Detection</div>
+          <div id="journey-stepper" class="journey-stepper">
+            <!-- Steps injected via JS -->
+          </div>
         </div>
         <div id="tree-hdr">Functional Test Cases</div>
         <div id="tree">
@@ -937,6 +990,7 @@
     let filterText        = "";
     let activeJourneyFilter = "lifestyle"; // tracks TD panel journey type select
     let visibleTestCases  = []; // set by renderTree() — used by Run All
+    let queuedLinks       = [];
 
     // Multi-run state
     const runs   = new Map(); // runId → { label, status, logs[], artifacts, startTime, es, elapsedTimer, videoUrls[] }
@@ -974,6 +1028,13 @@
     const customLinkWrap  = document.getElementById("custom-link-wrap");
     const customLinkInput = document.getElementById("custom-link-input");
     const btnRunLinkFlow  = document.getElementById("btn-run-link-flow");
+    const btnAddLink      = document.getElementById("btn-add-link");
+    const linkQueueWrap   = document.getElementById("link-queue-wrap");
+    const linkQueueList   = document.getElementById("link-queue-list");
+    const linkQueueHdr    = document.getElementById("link-queue-hdr");
+    const btnRunQueuedLinks = document.getElementById("btn-run-queued-links");
+    const btnClearQueuedLinks = document.getElementById("btn-clear-queued-links");
+
     let healthyaAnalysis = null;
 
     // ── Tabs ───────────────────────────────────────────────────────────────────
@@ -986,6 +1047,66 @@
         document.getElementById("artifacts-panel").style.display = which === "artifacts" ? "flex" : "none";
         document.getElementById("testdata-panel").style.display  = which === "testdata"  ? "flex" : "none";
       });
+    });
+
+    // ── Multi-Link Queue ───────────────────────────────────────────────────────
+    function renderLinkQueue() {
+      if (queuedLinks.length === 0) {
+        linkQueueWrap.style.display = "none";
+        return;
+      }
+      linkQueueList.innerHTML = "";
+      queuedLinks.forEach((link, idx) => {
+        const div = document.createElement("div");
+        div.style.cssText = "font-size: 10px; color: var(--clr-txt-muted); padding: 5px 0; border-bottom: 1px solid var(--clr-border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
+        div.textContent = `${idx + 1}. ${link}`;
+        linkQueueList.appendChild(div);
+      });
+      linkQueueHdr.textContent = `Pending Links (${queuedLinks.length})`;
+      linkQueueWrap.style.display = "block";
+    }
+
+    btnAddLink.addEventListener("click", () => {
+      const link = customLinkInput.value.trim();
+      if (!link) return;
+      try {
+        new URL(link);
+        queuedLinks.push(link);
+        customLinkInput.value = "";
+        renderLinkQueue();
+      } catch (_) {
+        alert("Please paste a valid URL first.");
+      }
+    });
+
+    btnClearQueuedLinks.addEventListener("click", () => {
+      queuedLinks = [];
+      renderLinkQueue();
+    });
+
+    btnRunQueuedLinks.addEventListener("click", async () => {
+      if (queuedLinks.length === 0) return;
+      if (!isHealthyaSelected()) { alert("Select helathya pharmacy first."); return; }
+
+      const linksToRun = [...queuedLinks];
+      queuedLinks = [];
+      renderLinkQueue();
+
+      for (const link of linksToRun) {
+        customLinkInput.value = link;
+        try {
+          setStatus("running", `Analyzing batch link: ${link}...`);
+          const analysis = await runLinkPipeline();
+          if (analysis) {
+            await queueRun({
+              label: `Batch: ${link.split("/").pop().substring(0, 10)}...`,
+              journey: (analysis.suggestedJourneys || [])[0]
+            });
+          }
+        } catch (e) {
+          appendLog(`Failed to process ${link}: ${e.message}`, "log-fail");
+        }
+      }
     });
 
     // ── Test Data Panel ────────────────────────────────────────────────────────
@@ -1123,6 +1244,34 @@
       customLinkWrap.style.display = "flex";
     }
 
+    function resetJourneyFlowUI() {
+      const jWrap = document.getElementById("journey-wrap");
+      const stepper = document.getElementById("journey-stepper");
+      if (jWrap) jWrap.style.display = "none";
+      if (stepper) stepper.innerHTML = "";
+    }
+
+    function renderJourneyFlow(predictedString) {
+      const stepper = document.getElementById("journey-stepper");
+      const jWrap = document.getElementById("journey-wrap");
+      if (!stepper || !jWrap) return;
+
+      stepper.innerHTML = "";
+      if (!predictedString) {
+        jWrap.style.display = "none";
+        return;
+      }
+
+      const steps = predictedString.split(" -> ");
+      steps.forEach((step, idx) => {
+        const div = document.createElement("div");
+        div.className = "journey-step" + (idx === 0 ? " active" : "");
+        div.textContent = step;
+        stepper.appendChild(div);
+      });
+      jWrap.style.display = "block";
+    }
+
     function applyJourneyFilter(journeys) {
       if (!Array.isArray(journeys) || journeys.length === 0) {
         allTests = [];
@@ -1160,35 +1309,36 @@
       return r.json();
     }
 
-    async function runLinkPipeline() {
+    async function runLinkPipeline(skipUIReset = false) {
       const link = getValidCustomLink();
       if (!link) {
         alert("Paste a valid API link first.");
         customLinkInput.focus();
         return null;
       }
-      clearLog();
-      appendLog("Paste URL ✓", "log-start");
-      appendLog("Resolve and analyze link...", "log-start");
+      if (!skipUIReset) {
+        clearLog();
+        resetJourneyFlowUI();
+      }
+      appendLog(`Analyzing: ${link}`, "log-start");
 
       try {
         const analysis = await analyzeHealthyaLink(link);
         healthyaAnalysis = analysis;
         customLinkInput.value = analysis.resolved;
         appendLog(`Resolved: ${analysis.resolved}`, "log-start");
-        appendLog("Decode JWT...", "log-start");
-        const condId =
-          analysis?.tokenPayload?.health_condition_id ??
-          analysis?.conditionTokenPayload?.health_condition_id ??
-          "unknown";
-        appendLog(`Condition token id: ${condId}`, "log-start");
-        appendLog("Detect condition/flow...", "log-start");
         appendLog(`Detected step: ${analysis?.detected?.step || "unknown"}`, "log-start");
-        appendLog(`Journeys: ${(analysis.suggestedJourneys || []).join(", ") || "none"}`, "log-start");
+
+        if (analysis.detected && analysis.detected.predictedJourney) {
+          renderJourneyFlow(analysis.detected.predictedJourney);
+          appendLog(`Detected journey: ${analysis.detected.predictedJourney}`, "log-start");
+        }
+
         applyJourneyFilter(analysis.suggestedJourneys || []);
         browserUrl.value = analysis.detected?.currentUrl || analysis.resolved;
         return analysis;
       } catch (_) {
+        if (!skipUIReset) resetJourneyFlowUI();
         appendLog("Analyze API unavailable, using fallback resolver...", "log-warn");
         const resolved = await resolveHealthyaLink(link);
         healthyaAnalysis = {
@@ -1765,15 +1915,20 @@
       if (!file && !grep && !line) {
         if (isHealthyaSelected() && customBaseURL && resolvedCustomURL) {
           file = "tests/e2e/pasted-link-flow.spec.ts";
-          label = "Pasted Link Direct Flow";
+          label = label || "Pasted Link Direct Flow";
         } else {
           file = JOURNEY_SUITE_FILES[runJourney];
-          label = `${JOURNEY_LABELS[runJourney] || "Selected"} suite`;
+          label = label || `${JOURNEY_LABELS[runJourney] || "Selected"} suite`;
         }
       }
 
       // Prevent duplicate queuing of the same test/file
-      const key = grep ? `test:${grep}` : file ? `file:${file}` : null;
+      let key = grep ? `test:${grep}` : file ? `file:${file}` : null;
+      // Allow multiple links to be queued by making the key unique per URL
+      if (file === "tests/e2e/pasted-link-flow.spec.ts" && resolvedCustomURL) {
+        key = `file:${file}|url:${resolvedCustomURL}-${Math.random()}`;
+      }
+
       if (key && queuedKeys.has(key)) return;
 
       // Collect test data overrides (browser-only — applied temporarily on server during the run)
@@ -1803,17 +1958,53 @@
       processQueue();
     }
 
-    function processQueue() {
+    async function processQueue() {
       if (queueRunning || runQueue.length === 0) return;
       queueRunning = true;
 
       const job = runQueue.shift();
       updateQueuePositions();
 
-      const { runId, file, line, grep, label, key, journey, tdOverrides, customBaseURL, resolvedCustomURL } = job;
+      const { runId, file, line, grep, label, key, tdOverrides, rawLink } = job;
       transitionCardToRunning(runId);
       clearLog();
       hideCounts();
+
+      let finalJourney = job.journey;
+      let finalBaseURL = job.customBaseURL;
+      let finalStartUrl = job.resolvedCustomURL;
+
+      if (rawLink) {
+        setStatus("running", `Analyzing: ${rawLink}...`);
+        addRunLog(runId, `Analyzing link: ${rawLink}`, "log-start");
+        customLinkInput.value = rawLink;
+        try {
+          const analysis = await analyzeHealthyaLink(rawLink);
+          healthyaAnalysis = analysis;
+          finalBaseURL = analysis.baseURL;
+          finalStartUrl = analysis.resolved;
+          finalJourney = (analysis.suggestedJourneys || [])[0] || "lifestyle";
+          customLinkInput.value = analysis.resolved;
+          browserUrl.value = analysis.detected?.currentUrl || analysis.resolved;
+          applyJourneyFilter(analysis.suggestedJourneys || []);
+          if (analysis.detected && analysis.detected.predictedJourney) {
+            renderJourneyFlow(analysis.detected.predictedJourney);
+            addRunLog(runId, `Detected journey: ${analysis.detected.predictedJourney}`, "log-start");
+          } else {
+            resetJourneyFlowUI();
+          }
+        } catch (_) {
+          addRunLog(runId, "Analyze API unavailable, using fallback resolver...", "log-warn");
+          const resolved = await resolveHealthyaLink(rawLink);
+          finalBaseURL = resolved.baseURL;
+          finalStartUrl = resolved.resolved;
+          finalJourney = "lifestyle";
+          customLinkInput.value = resolved.resolved;
+          browserUrl.value = resolved.resolved;
+          resetJourneyFlowUI();
+        }
+      }
+
       setStatus("running", `Running: ${label}`);
       treeEl.querySelectorAll(".test-dot").forEach(d => { d.className = "test-dot"; });
 
@@ -1822,11 +2013,11 @@
       if (line)  params.set("line", line);
       if (grep)  params.set("grep", grep);
       if (label) params.set("label", label);
-      if (journey) params.set("journey", journey);
+      if (finalJourney) params.set("journey", finalJourney);
       if (tdOverrides) params.set("td", tdOverrides);
-      if (customBaseURL) params.set("baseURL", customBaseURL);
-      if (resolvedCustomURL) params.set("startUrl", resolvedCustomURL);
-      if (resolvedCustomURL) browserUrl.value = resolvedCustomURL;
+      if (finalBaseURL) params.set("baseURL", finalBaseURL);
+      if (finalStartUrl) params.set("startUrl", finalStartUrl);
+      if (finalStartUrl) browserUrl.value = finalStartUrl;
 
       const es = new EventSource(`/api/run-tests?${params}`);
       const run = runs.get(runId);

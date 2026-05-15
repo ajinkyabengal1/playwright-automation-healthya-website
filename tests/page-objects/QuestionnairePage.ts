@@ -23,6 +23,7 @@ export class QuestionnairePage {
    * Wait for the questionnaire page to be ready.
    */
   async waitForPage() {
+    console.log("[QuestionnairePage] waitForPage() start");
     await this.page.waitForLoadState("domcontentloaded");
     // Wait for at least one question or the first navigation button
     await this.page
@@ -43,6 +44,7 @@ export class QuestionnairePage {
       )
       .first()
       .waitFor({ state: "visible", timeout: 30_000 });
+    console.log("[QuestionnairePage] waitForPage() ready");
   }
 
   /**
@@ -56,10 +58,13 @@ export class QuestionnairePage {
    * Then click Next/Continue/Submit.
    */
   async answerAllQuestions() {
+    console.log("[QuestionnairePage] answerAllQuestions() start");
     for (let step = 0; step < this.MAX_QUESTIONS; step++) {
-      await this.page.waitForTimeout(200); // brief pause for animations
+      console.log(
+        `[QuestionnairePage] answerAllQuestions loop ${step + 1}/${this.MAX_QUESTIONS}`,
+      );
+      await this.page.waitForTimeout(300);
 
-      // Guard: once drug selection is visible, stop questionnaire handling.
       if (await this.isOnDrugSelectionPage()) {
         console.log(
           "[QuestionnairePage] Drug selection UI detected — exiting questionnaire handler",
@@ -67,7 +72,6 @@ export class QuestionnairePage {
         return;
       }
 
-      // Guard: once payment is visible, stop questionnaire handling immediately.
       if (await this.isOnPaymentPage()) {
         console.log(
           "[QuestionnairePage] Payment UI detected — exiting questionnaire handler",
@@ -75,26 +79,65 @@ export class QuestionnairePage {
         return;
       }
 
-      // If we've reached the signup form, stop
       if (await this.isOnSignupOrBookingPage()) {
+        console.log(
+          "[QuestionnairePage] Signup/booking detected — exiting questionnaire handler",
+        );
         return;
       }
 
-      let answered = await this.answerCurrentQuestion();
-      if (answered) {
-        // If we just answered a radio/checkbox question, try an immediate save/next
-        // so we do not re-detect the same question on the next outer iteration.
-        await this.clickPrimaryButton().catch(() => {});
+      if (await this.isOnGuestContinuePage()) {
+        console.log(
+          "[QuestionnairePage] Guest continue detected — exiting questionnaire handler",
+        );
+        return;
       }
+
+      if (await this.isOnBookingPage()) {
+        console.log(
+          "[QuestionnairePage] Booking page detected — exiting questionnaire handler",
+        );
+        return;
+      }
+
+      const questionSnapshot = await this.page
+        .locator(".questions")
+        .first()
+        .textContent()
+        .catch(() => "");
+
+      console.log(
+        `[QuestionnairePage] Step ${step + 1} question snapshot: ${questionSnapshot}`,
+      );
+
+      const answered = await this.answerCurrentQuestion();
+
+      // IMPORTANT FIX:
+      // wait for AntD form state propagation
+      if (answered) {
+        await this.page.waitForTimeout(1200);
+      }
+
       const advanced = await this.progressQuestionnaire();
 
       if (!advanced && !answered) {
-        // No question found and no button — might be loading or done
         await this.page.waitForTimeout(1000);
+
         if (await this.isOnDrugSelectionPage()) return;
         if (await this.isOnSignupOrBookingPage()) return;
+        if (await this.isOnGuestContinuePage()) return;
+        if (await this.isOnBookingPage()) return;
+
+        // If snapshot is empty and no primary button, we might have moved on.
+        if (!questionSnapshot.trim() && !(await this.isOnQuestionnairePage())) {
+          console.log(
+            "[QuestionnairePage] No questionnaire indicators and empty snapshot — exiting",
+          );
+          return;
+        }
       }
     }
+    console.log("[QuestionnairePage] answerAllQuestions() max loop reached");
   }
 
   private async clickPreferredOption(
@@ -275,7 +318,17 @@ export class QuestionnairePage {
         if (disabled) continue;
 
         const nestedInput = option.locator('input[type="radio"]').first();
-        await this.forceSelectRadioOption(option, nestedInput);
+        if (await nestedInput.isVisible().catch(() => false)) {
+          await nestedInput.scrollIntoViewIfNeeded().catch(() => {});
+          await nestedInput.check({ force: true }).catch(async () => {
+            await nestedInput.click({ force: true });
+          });
+        } else {
+          await option.scrollIntoViewIfNeeded().catch(() => {});
+          await option.click({ force: true }).catch(async () => {
+            await option.evaluate((el: HTMLElement) => el.click());
+          });
+        }
         await this.page.waitForTimeout(300);
 
         const selected = await this.isRadioSelectionApplied(labelText, scope);
@@ -289,45 +342,88 @@ export class QuestionnairePage {
     return false;
   }
 
-  private async forceSelectRadioOption(
-    option: ReturnType<Page["locator"]>,
-    nestedInput: ReturnType<Page["locator"]>,
-  ): Promise<void> {
-    await option.scrollIntoViewIfNeeded().catch(() => {});
+  private async answerShinglesSymptomsRadioQuestion(): Promise<boolean> {
+    const option = this.page
+      .locator("label.ant-radio-wrapper")
+      .filter({
+        hasText: /^I do not have these symptoms$/i,
+      })
+      .first();
 
-    // Click visible wrapper first (AntD often binds state here).
-    await option.click({ force: true }).catch(async () => {
-      await option.evaluate((el: HTMLElement) => el.click());
+    const visible = await option.isVisible().catch(() => false);
+
+    if (!visible) {
+      console.log("[QuestionnairePage] Shingles option not visible");
+
+      return false;
+    }
+
+    console.log("[QuestionnairePage] Found shingles symptoms radio option");
+
+    await option.scrollIntoViewIfNeeded();
+
+    await option.click({
+      force: true,
     });
 
-    // Then drive native input for deterministic checked state.
-    if (await nestedInput.isVisible().catch(() => false)) {
-      await nestedInput.scrollIntoViewIfNeeded().catch(() => {});
-      await nestedInput.check({ force: true }).catch(async () => {
-        await nestedInput.click({ force: true }).catch(async () => {
-          await nestedInput.evaluate((el: HTMLInputElement) => {
-            el.checked = true;
-            el.dispatchEvent(
-              new MouseEvent("click", { bubbles: true, cancelable: true }),
-            );
-            el.dispatchEvent(new Event("change", { bubbles: true }));
-            el.dispatchEvent(new Event("input", { bubbles: true }));
-          });
-        });
+    await this.page.waitForTimeout(1500);
+
+    const radioInput = option.locator('input.ant-radio-input[type="radio"]');
+
+    let checked = await radioInput.isChecked().catch(() => false);
+
+    console.log(`[QuestionnairePage] Checked after click: ${checked}`);
+
+    if (!checked) {
+      await radioInput.evaluate((el: HTMLInputElement) => {
+        el.checked = true;
+
+        el.dispatchEvent(
+          new MouseEvent("click", {
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+
+        el.dispatchEvent(
+          new Event("change", {
+            bubbles: true,
+          }),
+        );
+
+        el.dispatchEvent(
+          new Event("input", {
+            bubbles: true,
+          }),
+        );
       });
-    } else {
-      const optionInput = option.locator('input[type="radio"]').first();
-      if (await optionInput.count().catch(() => 0)) {
-        await optionInput.evaluate((el: HTMLInputElement) => {
-          el.checked = true;
-          el.dispatchEvent(
-            new MouseEvent("click", { bubbles: true, cancelable: true }),
-          );
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-        });
-      }
+
+      await this.page.waitForTimeout(1500);
     }
+
+    checked = await radioInput.isChecked().catch(() => false);
+
+    console.log(`[QuestionnairePage] Final checked state: ${checked}`);
+
+    if (!checked) {
+      return false;
+    }
+
+    // IMPORTANT:
+    // click save HERE directly
+    const saveButton = this.page.locator('button:has-text("Save")').first();
+
+    if (await saveButton.isVisible().catch(() => false)) {
+      console.log("[QuestionnairePage] Clicking Save button");
+
+      await saveButton.click({
+        force: true,
+      });
+
+      await this.page.waitForTimeout(2500);
+    }
+
+    return true;
   }
 
   private async selectRadioByHeadingGroup(
@@ -890,11 +986,7 @@ export class QuestionnairePage {
     // keep heading matching strict to prevent broad container matches that can
     // make multiple input rules target the same field.
     return this.page
-      .locator(
-        [".questions", ".question-title"].join(
-          ", ",
-        ),
-      )
+      .locator([".questions", ".question-title"].join(", "))
       .filter({ hasText: pattern })
       .first();
   }
@@ -911,16 +1003,14 @@ export class QuestionnairePage {
         : control === "radio"
           ? ".//input[@type='radio']"
           : control === "date"
-            ? ".//input[@type='date'] or .//input[contains(@class,'ant-picker-input')] or .//input[contains(@placeholder,'DD')] or .//input[contains(@placeholder,'dd')]"
+            ? ".//input[@type='date'] or .//input[contains(@class,'ant-picker-input')]"
             : ".//input[not(@type='hidden') and not(@type='checkbox') and not(@type='radio')] or .//textarea";
 
-    // IMPORTANT FIX:
-    // Use nearest questionnaire wrapper instead of ancestor
     const wrapper = heading.locator(
       `xpath=ancestor::*[
       contains(@class,"questionnaire-answer-wrapper")
       or contains(@class,"question-container")
-      or ${predicateByControl}
+      or contains(@class,"single-choice-question-wrapper")
     ][1]`,
     );
 
@@ -928,8 +1018,25 @@ export class QuestionnairePage {
       return wrapper.first();
     }
 
-    // fallback
-    return heading.locator(`xpath=following::*[${predicateByControl}][1]`);
+    // IMPORTANT FIX:
+    // fallback now returns wrapper not input
+    const inputNode = heading.locator(
+      `xpath=following::*[${predicateByControl}][1]`,
+    );
+
+    const wrapperFromInput = inputNode.locator(
+      `xpath=ancestor::*[
+      contains(@class,"questionnaire-answer-wrapper")
+      or contains(@class,"question-container")
+      or contains(@class,"single-choice-question-wrapper")
+    ][1]`,
+    );
+
+    if ((await wrapperFromInput.count().catch(() => 0)) > 0) {
+      return wrapperFromInput.first();
+    }
+
+    return this.getActiveQuestionScope();
   }
 
   private fuzzyRuleMatch(questionText: string, pattern: RegExp): boolean {
@@ -959,8 +1066,8 @@ export class QuestionnairePage {
   }
 
   private async answerCurrentQuestion(): Promise<boolean> {
-    const forcedIntroAnswered = await this.forceAnswerShinglesIntroQuestion();
-    if (forcedIntroAnswered) return true;
+    console.log("[QuestionnairePage] answerCurrentQuestion() started");
+
     if (await this.isOnDrugSelectionPage()) {
       return false;
     }
@@ -986,7 +1093,26 @@ export class QuestionnairePage {
       return false;
     }
 
-    const activeCondition = getActiveConditionName().toLowerCase();
+    const activeCondition = (getActiveConditionName() || "")
+      .toLowerCase()
+      .trim();
+
+    console.log(
+      `[QuestionnairePage] Active condition detected: "${activeCondition}"`,
+    );
+
+    // SPECIAL FIX FOR SHINGLES ANT DESIGN RADIO
+    if (activeCondition.includes("shingles")) {
+      const shinglesAnswered = await this.answerShinglesSymptomsRadioQuestion();
+
+      if (shinglesAnswered) {
+        console.log(
+          "[QuestionnairePage] Successfully answered shingles symptoms question",
+        );
+
+        return true;
+      }
+    }
 
     // IMPORTANT FIX:
     // Process ALL visible rules in one pass.
@@ -1050,29 +1176,6 @@ export class QuestionnairePage {
       return handled;
     }
 
-    // Targeted fix for shingles "Do you have these symptoms?" radio block.
-    // DOM shape:
-    // - .single-choice-question-wrapper
-    // - input.ant-radio-input[name="<dynamic>"][value="I do not have these symptoms"]
-    const shinglesSymptomsAnswered =
-      await this.answerShinglesSymptomsRadioQuestion();
-    if (shinglesSymptomsAnswered) {
-      console.log(
-        '[QuestionnairePage] Selected shingles symptoms option: "I do not have these symptoms"',
-      );
-      return true;
-    }
-
-    const noSymptomsSelected = await this.selectRadioByText(
-      "I do not have these symptoms",
-    );
-    if (noSymptomsSelected) {
-      console.log(
-        '[QuestionnairePage] Selected "I do not have these symptoms"',
-      );
-      return true;
-    }
-
     // Single choice (radio buttons)
     const radios = this.page.locator(
       'input[type="radio"]:not([name="gender"]):not([id="male"]):not([id="female"])',
@@ -1113,7 +1216,9 @@ export class QuestionnairePage {
         if (!visible) continue;
         const enabled = await input.isEnabled().catch(() => false);
         if (!enabled) continue;
-        const disabledAttr = await input.getAttribute("disabled").catch(() => null);
+        const disabledAttr = await input
+          .getAttribute("disabled")
+          .catch(() => null);
         if (disabledAttr !== null) continue;
 
         await label.click({ force: true }).catch(() => {});
@@ -1122,16 +1227,6 @@ export class QuestionnairePage {
           "I do not have these symptoms",
         );
         if (noSymptomsChecked) return true;
-      }
-
-      const radioCount = await radios.count();
-      if (radioCount > 0) {
-        const fallbackRadio = radios.nth(radioCount - 1);
-        const isVisible = await fallbackRadio.isVisible().catch(() => false);
-        if (isVisible) {
-          await fallbackRadio.click({ force: true }).catch(() => {});
-          return true;
-        }
       }
       return false;
     }
@@ -1169,7 +1264,10 @@ export class QuestionnairePage {
     );
     if (
       (await numberInput.isVisible().catch(() => false)) &&
-      (await numberInput.first().isEnabled().catch(() => false))
+      (await numberInput
+        .first()
+        .isEnabled()
+        .catch(() => false))
     ) {
       const count = await numberInput.count();
       if (count >= 2) {
@@ -1199,7 +1297,10 @@ export class QuestionnairePage {
     );
     if (
       (await textInput.isVisible().catch(() => false)) &&
-      (await textInput.first().isEnabled().catch(() => false))
+      (await textInput
+        .first()
+        .isEnabled()
+        .catch(() => false))
     ) {
       await textInput.first().click();
       await textInput.first().clear();
@@ -1215,227 +1316,6 @@ export class QuestionnairePage {
       // Press Enter to confirm date selection
       await this.page.keyboard.press("Enter");
       return true;
-    }
-
-    // Last-resort fallback for unseen question variants:
-    // choose the first enabled control inside the current question scope.
-    const fallbackAnswered = await this.answerUnknownQuestionFallback();
-    if (fallbackAnswered) {
-      console.log(
-        "[QuestionnairePage] Fallback answered unknown question via first enabled control",
-      );
-      return true;
-    }
-
-    return false;
-  }
-
-  private async forceAnswerShinglesIntroQuestion(): Promise<boolean> {
-    const questionBlock = this.page
-      .locator(
-        '.questionnaire-answer-wrapper:has(.questions:has-text("Do you have these symptoms?"))',
-      )
-      .first();
-    if (!(await questionBlock.isVisible().catch(() => false))) return false;
-
-    const targetInput = questionBlock
-      .locator(
-        'input.ant-radio-input[type="radio"][value="I do not have these symptoms"]',
-      )
-      .first();
-    if (!(await targetInput.isVisible().catch(() => false))) return false;
-
-    const label = questionBlock
-      .locator(
-        'label.ant-radio-wrapper:has(input.ant-radio-input[value="I do not have these symptoms"])',
-      )
-      .first();
-
-    const radioVisual = label.locator(".ant-radio, .ant-radio-inner").first();
-
-    await label.scrollIntoViewIfNeeded().catch(() => {});
-    await label.click({ force: true }).catch(async () => {
-      await radioVisual.click({ force: true }).catch(async () => {
-        await targetInput.evaluate((el: HTMLInputElement) => {
-          el.checked = true;
-          el.dispatchEvent(
-            new MouseEvent("click", { bubbles: true, cancelable: true }),
-          );
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-        });
-      });
-    });
-
-    await targetInput.check({ force: true }).catch(async () => {
-      await targetInput.click({ force: true }).catch(async () => {
-        await targetInput.evaluate((el: HTMLInputElement) => {
-          el.checked = true;
-          el.dispatchEvent(
-            new MouseEvent("click", { bubbles: true, cancelable: true }),
-          );
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-        });
-      });
-    });
-
-    await this.page.waitForTimeout(350);
-
-    const checked = await targetInput.isChecked().catch(() => false);
-    const wrapperChecked = await label
-      .evaluate((el) => el.classList.contains("ant-radio-wrapper-checked"))
-      .catch(() => false);
-
-    if (!checked && !wrapperChecked) return false;
-
-    console.log(
-      '[QuestionnairePage] Forced shingles intro answer selected: "I do not have these symptoms"',
-    );
-    return true;
-  }
-
-  private async answerShinglesSymptomsRadioQuestion(): Promise<boolean> {
-    const heading = this.page
-      .locator(
-        '.single-choice-question-wrapper .questions:has-text("Do you have these symptoms?"), .required-question:has-text("Do you have these symptoms?")',
-      )
-      .first();
-
-    const headingVisible = await heading.isVisible().catch(() => false);
-    if (!headingVisible) return false;
-
-    const wrapper = heading
-      .locator("xpath=ancestor::*[contains(@class,'single-choice-question-wrapper')][1]")
-      .first();
-
-    const targetRadio = wrapper
-      .locator(
-        'input.ant-radio-input[type="radio"][value="I do not have these symptoms"]',
-      )
-      .first();
-
-    if (!(await targetRadio.isVisible().catch(() => false))) return false;
-
-    const label = targetRadio
-      .locator("xpath=ancestor::label[contains(@class,'ant-radio-wrapper')][1]")
-      .first();
-
-    await label.scrollIntoViewIfNeeded().catch(() => {});
-    await label.click({ force: true }).catch(async () => {
-      await label.evaluate((el: HTMLElement) => el.click());
-    });
-
-    await targetRadio.check({ force: true }).catch(async () => {
-      await targetRadio.click({ force: true }).catch(async () => {
-        await targetRadio.evaluate((el: HTMLInputElement) => {
-          el.checked = true;
-          el.dispatchEvent(
-            new MouseEvent("click", { bubbles: true, cancelable: true }),
-          );
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-        });
-      });
-    });
-
-    await this.page.waitForTimeout(300);
-
-    const selected = await targetRadio.isChecked().catch(() => false);
-    if (!selected) return false;
-
-    const groupName = await targetRadio.getAttribute("name");
-    if (groupName) {
-      const checkedInGroup = await wrapper
-        .locator(`input.ant-radio-input[type="radio"][name="${groupName}"]:checked`)
-        .count()
-        .then((n) => n > 0)
-        .catch(() => false);
-      if (!checkedInGroup) return false;
-    }
-
-    return true;
-  }
-
-  private async answerUnknownQuestionFallback(): Promise<boolean> {
-    const scope = this.getActiveQuestionScope();
-    if (!(await scope.isVisible().catch(() => false))) return false;
-
-    // 1) Try first enabled radio input in active scope.
-    const radios = scope.locator(
-      'input[type="radio"]:not([disabled]):not([name="gender"]):not([id="male"]):not([id="female"])',
-    );
-    const radioCount = await radios.count().catch(() => 0);
-    for (let i = 0; i < radioCount; i++) {
-      const radio = radios.nth(i);
-      if (!(await radio.isVisible().catch(() => false))) continue;
-      await radio.scrollIntoViewIfNeeded().catch(() => {});
-      const wrapper = radio.locator("xpath=ancestor::label[1]").first();
-      if (await wrapper.count().catch(() => 0)) {
-        await this.forceSelectRadioOption(wrapper, radio);
-      } else {
-        await radio.check({ force: true }).catch(async () => {
-          await radio.click({ force: true });
-        });
-      }
-      await this.page.waitForTimeout(250);
-      const checked = await radio.isChecked().catch(() => false);
-      if (checked) return true;
-    }
-
-    // 2) Try first enabled ant radio wrapper.
-    const radioWrappers = scope.locator(
-      '.ant-radio-wrapper:not(.ant-radio-wrapper-disabled), .ant-radio-button-wrapper:not(.ant-radio-button-wrapper-disabled), [role="radio"][aria-disabled!="true"]',
-    );
-    const radioWrapCount = await radioWrappers.count().catch(() => 0);
-    for (let i = 0; i < radioWrapCount; i++) {
-      const option = radioWrappers.nth(i);
-      if (!(await option.isVisible().catch(() => false))) continue;
-      const nestedInput = option.locator('input[type="radio"]').first();
-      await this.forceSelectRadioOption(option, nestedInput);
-      await this.page.waitForTimeout(300);
-      const selected = await option
-        .evaluate(
-          (el) =>
-            el.classList.contains("ant-radio-wrapper-checked") ||
-            el.classList.contains("ant-radio-button-wrapper-checked") ||
-            el.getAttribute("aria-checked") === "true",
-        )
-        .catch(() => false);
-      if (selected) return true;
-    }
-
-    // 3) Try first enabled checkbox.
-    const checkboxes = scope.locator('input[type="checkbox"]:not([disabled])');
-    const cbCount = await checkboxes.count().catch(() => 0);
-    for (let i = 0; i < cbCount; i++) {
-      const cb = checkboxes.nth(i);
-      if (!(await cb.isVisible().catch(() => false))) continue;
-      await cb.scrollIntoViewIfNeeded().catch(() => {});
-      await cb.check({ force: true }).catch(async () => {
-        await cb.click({ force: true });
-      });
-      await this.page.waitForTimeout(250);
-      const checked = await cb.isChecked().catch(() => false);
-      if (checked) return true;
-    }
-
-    // 4) Try first editable text/textarea input.
-    const textInputs = scope.locator(
-      'input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"]):not([disabled]):not([readonly]), textarea:not([disabled]):not([readonly])',
-    );
-    const textCount = await textInputs.count().catch(() => 0);
-    for (let i = 0; i < textCount; i++) {
-      const input = textInputs.nth(i);
-      if (!(await input.isVisible().catch(() => false))) continue;
-      if (!(await input.isEditable().catch(() => false))) continue;
-      await input.scrollIntoViewIfNeeded().catch(() => {});
-      await input.click({ force: true }).catch(() => {});
-      await input.fill("None").catch(async () => {
-        await input.type("None", { delay: 20 }).catch(() => {});
-      });
-      await this.page.waitForTimeout(200);
-      const val = await input.inputValue().catch(() => "");
-      if ((val || "").trim().length > 0) return true;
     }
 
     return false;
@@ -1493,7 +1373,13 @@ export class QuestionnairePage {
   }
 
   private async answerByConditionRules(): Promise<boolean> {
-    const activeCondition = getActiveConditionName().toLowerCase();
+    const activeCondition = (getActiveConditionName() || "")
+      .toLowerCase()
+      .trim();
+
+    console.log(
+      `[QuestionnairePage] Active condition detected: "${activeCondition}"`,
+    );
 
     const rules =
       activeCondition === "weight management"
@@ -1623,6 +1509,8 @@ export class QuestionnairePage {
       'button:has-text("Submit")',
       'button:has-text("Finish")',
       'button[type="submit"]',
+      'a:has-text("Continue")',
+      'a:has-text("Proceed")',
     ];
 
     for (const sel of buttonSelectors) {
@@ -1665,6 +1553,15 @@ export class QuestionnairePage {
         return true;
       }
 
+      if (await this.isOnGuestContinuePage()) {
+        return true;
+      }
+
+      if (await this.isOnBookingPage()) {
+        return true;
+      }
+
+      console.log("[QuestionnairePage] progressQuestionnaire() running");
       const clicked = await this.clickPrimaryButton();
       if (!clicked) {
         return progressed;
@@ -1691,6 +1588,7 @@ export class QuestionnairePage {
             ".rota-slot",
             ':text("Complete your payment")',
             ':text("Booking Confirmed")',
+            ':text("Continue as Guest")',
           ].join(", "),
         )
         .first()
@@ -1710,6 +1608,7 @@ export class QuestionnairePage {
       '[class*="question"]',
       '[class*="questionnaire"]',
       'button:has-text("Next")',
+      ".questions",
     ];
     for (const sel of questionnaireIndicators) {
       if (
@@ -1726,27 +1625,85 @@ export class QuestionnairePage {
   }
 
   private async isOnSignupOrBookingPage(): Promise<boolean> {
+    // STRICT signup detection only
+
     const signupIndicators = [
       'input[name="first_name"]',
       'input[name="last_name"]',
-      'text="Create Account"',
-      'text="Sign Up"',
-      'text="Book Appointment"',
-      'text="Your appointment"',
-      '[class*="booking"]',
-      '[class*="signup"]',
+      'input[name="email"]',
+      'input[type="email"]',
+      'input[placeholder*="Enter your email"]',
+      'input[placeholder*="phone number"]',
+      'button:has-text("Sign Up")',
+      ':text("Enter your contact details")',
+      ':text("Patient details")',
+      ':text("Personal details")',
     ];
 
     for (const sel of signupIndicators) {
+      const visible = await this.page
+        .locator(sel)
+        .first()
+        .isVisible()
+        .catch(() => false);
+
+      if (visible) {
+        console.log(`[QuestionnairePage] Signup indicator matched: ${sel}`);
+
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private async isOnGuestContinuePage(): Promise<boolean> {
+    const indicators = [
+      ".continue-guest-box",
+      "text=/continue\\s+as\\s+guest/i",
+      "text=/proceed\\s+as\\s+a\\s+guest/i",
+      'button:has-text("Continue as Guest")',
+      'a:has-text("Continue as Guest")',
+    ];
+
+    for (const sel of indicators) {
       if (
         await this.page
           .locator(sel)
+          .first()
           .isVisible()
           .catch(() => false)
       ) {
         return true;
       }
     }
+
+    return false;
+  }
+
+  private async isOnBookingPage(): Promise<boolean> {
+    const indicators = [
+      ".appointment-type-radio-group",
+      ".rota-slot",
+      'button:has-text("Book Now")',
+      'button:has-text("Continue to Payment")',
+      'button:has-text("Continue to payment")',
+      ':text("Appointment type")',
+      ':text("Book your appointment")',
+    ];
+
+    for (const sel of indicators) {
+      if (
+        await this.page
+          .locator(sel)
+          .first()
+          .isVisible()
+          .catch(() => false)
+      ) {
+        return true;
+      }
+    }
+
     return false;
   }
 
@@ -1775,40 +1732,65 @@ export class QuestionnairePage {
       return false;
     }
 
-    const popupRoot = this.page
+    const popup = this.page
+      .locator(".ant-modal-content")
+      .filter({
+        hasText: /NHS 111/i,
+      })
+      .first();
+
+    const popupVisible = await popup.isVisible().catch(() => false);
+
+    if (!popupVisible) {
+      return false;
+    }
+
+    console.log("[QuestionnairePage] NHS 111 popup detected");
+
+    // IMPORTANT:
+    // support typo in production UI
+    const privateConsultationButton = popup
       .locator(
         [
-          '.ant-modal-content:has-text("NHS 111")',
-          '[role="dialog"]:has-text("NHS 111")',
-          ':text("Need Faster Access to Care?")',
+          "button.book-private-consultation-button",
+          'button:has-text("Book Private Consulation")',
+          'button:has-text("Book Private Consultation")',
+          'button:has-text("Private Consulation")',
+          'button:has-text("Private Consultation")',
         ].join(", "),
       )
       .first();
 
-    const popupVisible = await popupRoot.isVisible().catch(() => false);
-    const popupButton = this.page
-      .locator(
-        'button:has-text("Book Private Consultation"), a:has-text("Book Private Consultation")',
-      )
-      .first();
+    const buttonVisible = await privateConsultationButton
+      .isVisible()
+      .catch(() => false);
 
-    if (
-      !popupVisible &&
-      !(await popupButton.isVisible({ timeout: 1_500 }).catch(() => false))
-    ) {
+    if (!buttonVisible) {
+      console.log(
+        "[QuestionnairePage] Private consultation button not visible",
+      );
+
       return false;
     }
 
-    console.log(
-      "[QuestionnairePage] NHS 111 popup detected — clicking Book Private Consultation",
-    );
-    await popupButton.scrollIntoViewIfNeeded().catch(() => {});
-    await popupButton.waitFor({ state: "visible", timeout: 10_000 });
-    await popupButton.click({ force: true }).catch(async () => {
-      await popupButton.evaluate((el: HTMLElement) => el.click());
-    });
+    console.log("[QuestionnairePage] Clicking private consultation button");
 
-    await this.page.waitForLoadState("networkidle").catch(() => {});
+    await privateConsultationButton.scrollIntoViewIfNeeded();
+
+    await this.page.waitForTimeout(1000);
+
+    await privateConsultationButton
+      .click({
+        force: true,
+      })
+      .catch(async () => {
+        await privateConsultationButton.evaluate((el: HTMLElement) =>
+          el.click(),
+        );
+      });
+
+    await this.page.waitForTimeout(2500);
+
     return true;
   }
 

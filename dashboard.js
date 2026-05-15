@@ -7,7 +7,13 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "dashboard-public")));
 app.use("/test-results", express.static(path.join(__dirname, "test-results")));
-app.use("/trace-viewer", express.static(path.join(__dirname, "node_modules/playwright-core/lib/vite/traceViewer")));
+
+app.use(
+  "/trace-viewer",
+  express.static(
+    path.join(__dirname, "node_modules/playwright-core/lib/vite/traceViewer"),
+  ),
+);
 
 const TEST_DATA_PATH = path.join(__dirname, "tests/fixtures/test-data.ts");
 const PHARMACIES_PATH = path.join(__dirname, "tests/fixtures/pharmacies.ts");
@@ -20,15 +26,15 @@ function readPharmacies() {
   const lines = src.split("\n");
   let cur = null;
   for (const line of lines) {
-    const nameM  = line.match(/\bname\s*:\s*["']([^"']+)["']/);
-    const urlM   = line.match(/\bbaseURL\s*:\s*["']([^"']+)["']/);
-    const skipM  = line.match(/\bciSkip\s*:\s*(true|false)/);
-    const projM  = line.match(/\bsanityProjectId\s*:\s*["']([^"']+)["']/);
+    const nameM = line.match(/\bname\s*:\s*["']([^"']+)["']/);
+    const urlM = line.match(/\bbaseURL\s*:\s*["']([^"']+)["']/);
+    const skipM = line.match(/\bciSkip\s*:\s*(true|false)/);
+    const projM = line.match(/\bsanityProjectId\s*:\s*["']([^"']+)["']/);
     // Only start a new entry on name: lines inside the PHARMACY_SITES array
     // (interface fields have no string literal after the colon, so nameM won't match there)
     if (nameM) cur = { name: nameM[1], baseURL: "", ciSkip: false };
-    if (cur && urlM)  cur.baseURL = urlM[1];
-    if (cur && skipM) cur.ciSkip  = skipM[1] === "true";
+    if (cur && urlM) cur.baseURL = urlM[1];
+    if (cur && skipM) cur.ciSkip = skipM[1] === "true";
     if (cur && projM) cur.sanityProjectId = projM[1];
     if (cur && cur.baseURL && /^\s*\},?\s*$/.test(line)) {
       list.push({ ...cur });
@@ -50,7 +56,8 @@ function flattenSuites(suites, parentTitles = [], depth = 0) {
   const out = [];
   for (const s of suites || []) {
     // Skip file-level suite title (depth 0); keep describe titles
-    const titles = depth === 0 ? parentTitles : [...parentTitles, s.title].filter(Boolean);
+    const titles =
+      depth === 0 ? parentTitles : [...parentTitles, s.title].filter(Boolean);
     for (const spec of s.specs || []) {
       out.push({
         title: spec.title,
@@ -69,10 +76,14 @@ function listTests() {
     return Promise.resolve(_testListCache);
   }
   return new Promise((resolve, reject) => {
-    const proc = spawn("pnpm", ["exec", "playwright", "test", "--list", "--reporter=json"], {
-      cwd: __dirname,
-      env: { ...process.env },
-    });
+    const proc = spawn(
+      "pnpm",
+      ["exec", "playwright", "test", "--list", "--reporter=json"],
+      {
+        cwd: __dirname,
+        env: { ...process.env },
+      },
+    );
     let out = "";
     let err = "";
     proc.stdout.on("data", (c) => (out += c.toString()));
@@ -103,12 +114,36 @@ function listTests() {
 
 // ── Flow configs (mirrors flow-configs.ts — JS copy for dashboard) ────────────
 const FLOW_CONFIGS = [
-  { name: "NHS — next available slot",              group: "NHS",     conditionJourneyType: "nhs" },
-  { name: "NHS — specific date and time",           group: "NHS",     conditionJourneyType: "nhs" },
-  { name: "Private — next available slot, new card",  group: "Private", conditionJourneyType: "private" },
-  { name: "Private — next available slot, saved card", group: "Private", conditionJourneyType: "private" },
-  { name: "Private — specific date, new card",      group: "Private", conditionJourneyType: "private" },
-  { name: "Private — specific date, saved card",    group: "Private", conditionJourneyType: "private" },
+  {
+    name: "NHS — next available slot",
+    group: "NHS",
+    conditionJourneyType: "nhs",
+  },
+  {
+    name: "NHS — specific date and time",
+    group: "NHS",
+    conditionJourneyType: "nhs",
+  },
+  {
+    name: "Private — next available slot, new card",
+    group: "Private",
+    conditionJourneyType: "private",
+  },
+  {
+    name: "Private — next available slot, saved card",
+    group: "Private",
+    conditionJourneyType: "private",
+  },
+  {
+    name: "Private — specific date, new card",
+    group: "Private",
+    conditionJourneyType: "private",
+  },
+  {
+    name: "Private — specific date, saved card",
+    group: "Private",
+    conditionJourneyType: "private",
+  },
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -150,58 +185,67 @@ function readTestData() {
 
   return {
     user: {
-      gender:          getEnv("TD_GENDER"),
-      firstName:       getEnv("TD_FIRST_NAME"),
-      lastName:        getEnv("TD_LAST_NAME"),
-      postcode:        getEnv("TD_POSTCODE"),
-      email:           getEnv("TD_EMAIL"),
-      phone:           getEnv("TD_PHONE"),
-      guardianName:    getEnv("TD_GUARDIAN_NAME"),
-      dobDay:          getEnv("TD_DOB_DAY"),
-      dobMonth:        getEnv("TD_DOB_MONTH"),
-      dobYear:         getEnv("TD_DOB_YEAR"),
-      password:        getEnv("TD_PASSWORD"),
+      gender: getEnv("TD_GENDER"),
+      firstName: getEnv("TD_FIRST_NAME"),
+      lastName: getEnv("TD_LAST_NAME"),
+      postcode: getEnv("TD_POSTCODE"),
+      email: getEnv("TD_EMAIL"),
+      phone: getEnv("TD_PHONE"),
+      guardianName: getEnv("TD_GUARDIAN_NAME"),
+      dobDay: getEnv("TD_DOB_DAY"),
+      dobMonth: getEnv("TD_DOB_MONTH"),
+      dobYear: getEnv("TD_DOB_YEAR"),
+      password: getEnv("TD_PASSWORD"),
       confirmPassword: getEnv("TD_CONFIRM_PASSWORD"),
     },
     payment: {
       cardholderName: getEnv("TD_CARD_HOLDER"),
-      cardNumber:     getEnv("TD_CARD_NUMBER"),
-      expiryDate:     getEnv("TD_CARD_EXPIRY"),
-      securityCode:   getEnv("TD_CARD_CVV"),
+      cardNumber: getEnv("TD_CARD_NUMBER"),
+      expiryDate: getEnv("TD_CARD_EXPIRY"),
+      securityCode: getEnv("TD_CARD_CVV"),
     },
     condition: { journeyType },
     booking: {
-      appointmentType:    get("appointmentType"),
+      appointmentType: get("appointmentType"),
       useNextAvailableSlot: getBool("useNextAvailableSlot"),
-      preferredMonth:     get("preferredMonth"),
-      preferredDate:      get("preferredDate"),
-      preferredTime:      get("preferredTime"),
+      preferredMonth: get("preferredMonth"),
+      preferredDate: get("preferredDate"),
+      preferredTime: get("preferredTime"),
       autoMoveToNextDate: getBool("autoMoveToNextDate"),
-      maxDateAttempts:    getNum("maxDateAttempts"),
+      maxDateAttempts: getNum("maxDateAttempts"),
     },
     drug: {
       strength: get("strength"),
       packSize: get("packSize"),
     },
     cart: {
-      quantityAction:  get("quantityAction"),
-      quantityClicks:  getNum("quantityClicks"),
-      deleteProduct:   getBool("deleteProduct"),
-      couponCode: (() => { const m = src.match(/couponCode:\s*"([^"]*)"/); return m ? m[1] : ""; })(),
-      action: (() => { const m = src.match(/CART_PREFERENCES[\s\S]*?action:\s*"([^"]*)"/); return m ? m[1] : "Proceed To Checkout"; })(),
+      quantityAction: get("quantityAction"),
+      quantityClicks: getNum("quantityClicks"),
+      deleteProduct: getBool("deleteProduct"),
+      couponCode: (() => {
+        const m = src.match(/couponCode:\s*"([^"]*)"/);
+        return m ? m[1] : "";
+      })(),
+      action: (() => {
+        const m = src.match(/CART_PREFERENCES[\s\S]*?action:\s*"([^"]*)"/);
+        return m ? m[1] : "Proceed To Checkout";
+      })(),
     },
     shipping: {
-      shippingMode:   getEnv("TD_SHIP_MODE"),
-      addressType:    getEnv("TD_SHIP_ADDRESS_TYPE"),
-      addressLine1:   getEnv("TD_SHIP_ADDRESS1"),
-      addressLine2:   getEnv("TD_SHIP_ADDRESS2"),
-      townCity:       getEnv("TD_SHIP_CITY"),
-      postalCode:     getEnv("TD_SHIP_POSTCODE"),
-      addressAction:  getEnv("TD_SHIP_ADDRESS_ACTION"),
-      paymentMethod:  getEnv("TD_PAYMENT_METHOD"),
+      shippingMode: getEnv("TD_SHIP_MODE"),
+      addressType: getEnv("TD_SHIP_ADDRESS_TYPE"),
+      addressLine1: getEnv("TD_SHIP_ADDRESS1"),
+      addressLine2: getEnv("TD_SHIP_ADDRESS2"),
+      townCity: getEnv("TD_SHIP_CITY"),
+      postalCode: getEnv("TD_SHIP_POSTCODE"),
+      addressAction: getEnv("TD_SHIP_ADDRESS_ACTION"),
+      paymentMethod: getEnv("TD_PAYMENT_METHOD"),
     },
     thankYou: {
-      action: (() => { const m = src.match(/THANK_YOU_PREFERENCES[\s\S]*?action:\s*"([^"]*)"/); return m ? m[1] : "My Orders"; })(),
+      action: (() => {
+        const m = src.match(/THANK_YOU_PREFERENCES[\s\S]*?action:\s*"([^"]*)"/);
+        return m ? m[1] : "My Orders";
+      })(),
     },
   };
 }
@@ -218,13 +262,24 @@ function launchUI() {
   uiReady = false;
   uiProc = spawn(
     "pnpm",
-    ["exec", "playwright", "test", "--ui", `--ui-host=127.0.0.1`, `--ui-port=${UI_PORT}`],
-    { cwd: __dirname, env: { ...process.env } }
+    [
+      "exec",
+      "playwright",
+      "test",
+      "--ui",
+      `--ui-host=127.0.0.1`,
+      `--ui-port=${UI_PORT}`,
+    ],
+    { cwd: __dirname, env: { ...process.env } },
   );
 
   const onData = (chunk) => {
     const text = chunk.toString();
-    if (text.includes("listening") || text.includes(String(UI_PORT)) || text.includes("Listening")) {
+    if (
+      text.includes("listening") ||
+      text.includes(String(UI_PORT)) ||
+      text.includes("Listening")
+    ) {
       uiReady = true;
     }
   };
@@ -233,7 +288,9 @@ function launchUI() {
   uiProc.stderr.on("data", onData);
 
   // Give it time to boot even if we miss the log line
-  setTimeout(() => { uiReady = true; }, 4000);
+  setTimeout(() => {
+    uiReady = true;
+  }, 4000);
 
   uiProc.on("close", () => {
     uiProc = null;
@@ -260,7 +317,11 @@ function findArtifactsAfter(since) {
 
   function scan(d) {
     let entries;
-    try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch (_) { return; }
+    try {
+      entries = fs.readdirSync(d, { withFileTypes: true });
+    } catch (_) {
+      return;
+    }
     for (const entry of entries) {
       const full = path.join(d, entry.name);
       if (entry.isDirectory()) {
@@ -269,10 +330,12 @@ function findArtifactsAfter(since) {
         try {
           const stat = fs.statSync(full);
           if (stat.mtimeMs >= since) {
-            const url = "/" + path.relative(__dirname, full).replace(/\\/g, "/");
+            const url =
+              "/" + path.relative(__dirname, full).replace(/\\/g, "/");
             if (entry.name.endsWith(".webm")) artifacts.videos.push(url);
             else if (entry.name === "trace.zip") artifacts.traces.push(url);
-            else if (/\.(png|jpg|jpeg)$/i.test(entry.name)) artifacts.screenshots.push(url);
+            else if (/\.(png|jpg|jpeg)$/i.test(entry.name))
+              artifacts.screenshots.push(url);
           }
         } catch (_) {}
       }
@@ -289,7 +352,11 @@ function findArtifactsInDir(dir) {
 
   function scan(d) {
     let entries;
-    try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch (_) { return; }
+    try {
+      entries = fs.readdirSync(d, { withFileTypes: true });
+    } catch (_) {
+      return;
+    }
     for (const entry of entries) {
       const full = path.join(d, entry.name);
       if (entry.isDirectory()) {
@@ -298,7 +365,8 @@ function findArtifactsInDir(dir) {
         const url = "/" + path.relative(__dirname, full).replace(/\\/g, "/");
         if (entry.name.endsWith(".webm")) artifacts.videos.push(url);
         else if (entry.name === "trace.zip") artifacts.traces.push(url);
-        else if (/\.(png|jpg|jpeg)$/i.test(entry.name)) artifacts.screenshots.push(url);
+        else if (/\.(png|jpg|jpeg)$/i.test(entry.name))
+          artifacts.screenshots.push(url);
       }
     }
   }
@@ -328,9 +396,7 @@ async function resolveHealthyaLink(input) {
     );
     if (direct?.[0]) return direct[0];
 
-    const metaRefresh = text.match(
-      /url\s*=\s*(https?:\/\/[^\s"'<>]+)/i,
-    );
+    const metaRefresh = text.match(/url\s*=\s*(https?:\/\/[^\s"'<>]+)/i);
     if (metaRefresh?.[1]) return metaRefresh[1];
 
     const jsLocation = text.match(
@@ -409,12 +475,45 @@ async function detectFlowFromResolvedUrl(url) {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 });
     await page.waitForTimeout(1200);
 
+    // Detect "How it works" points to predict journey BEFORE clicking "Get Started"
+    const predictedJourney = await page.evaluate(() => {
+      // Look for the "How it works" section specifically if possible
+      const introWrapper = document.querySelector(".introduction-wrapper");
+      const searchContext = introWrapper || document.body;
+      const allText = searchContext.innerText || "";
+      const text = allText.toLowerCase();
+
+      const pointA = "receive advice and treatment";
+      const pointB = "checking your symptoms";
+      const pointC = "book your appointment";
+
+      const points = [];
+
+      // Look for the strings and their approximate positions
+      const idxA = text.indexOf(pointA);
+      const idxB = text.indexOf(pointB);
+      const idxC = text.indexOf(pointC);
+
+      if (idxA !== -1) points.push({ label: "signup", idx: idxA });
+      if (idxB !== -1) points.push({ label: "questionnaire", idx: idxB });
+      if (idxC !== -1) points.push({ label: "booking page", idx: idxC });
+
+      // Sort by appearance order on the page
+      points.sort((a, b) => a.idx - b.idx);
+
+      if (points.length === 0) return null;
+
+      return points.map((p) => p.label).join(" -> ");
+    });
+
     const getStartedBtn = page
       .locator(
         'button:has-text("Get Started"), a:has-text("Get Started"), button:has-text("Start"), a:has-text("Start")',
       )
       .first();
-    const getStartedVisible = await getStartedBtn.isVisible().catch(() => false);
+    const getStartedVisible = await getStartedBtn
+      .isVisible()
+      .catch(() => false);
     if (getStartedVisible) {
       await getStartedBtn.click().catch(() => {});
       await page.waitForLoadState("domcontentloaded").catch(() => {});
@@ -467,10 +566,12 @@ async function detectFlowFromResolvedUrl(url) {
     if (await hasVisible(paymentIndicators)) step = "payment";
     else if (await hasVisible(bookingIndicators)) step = "appointment_booking";
     else if (await hasVisible(signupIndicators)) step = "sign_up";
-    else if (await hasVisible(questionnaireIndicators)) step = "questionnaire_submit";
+    else if (await hasVisible(questionnaireIndicators))
+      step = "questionnaire_submit";
 
     return {
       step,
+      predictedJourney,
       currentUrl: page.url(),
       title: await page.title().catch(() => ""),
       clickedGetStarted: getStartedVisible,
@@ -567,11 +668,21 @@ app.get("/api/run-tests", (req, res) => {
     } catch (_) {}
   };
 
-  const runId = req.query.runId || `run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const runId =
+    req.query.runId ||
+    `run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
   // EventSource auto-reconnects when server closes the stream — prevent restarting a completed run
   if (completedRunIds.has(runId)) {
-    send("done", { code: 0, success: true, reconnect: true, passed: "", failed: "", skipped: "", artifacts: { videos: [], traces: [] } });
+    send("done", {
+      code: 0,
+      success: true,
+      reconnect: true,
+      passed: "",
+      failed: "",
+      skipped: "",
+      artifacts: { videos: [], traces: [] },
+    });
     res.end();
     return;
   }
@@ -591,13 +702,18 @@ app.get("/api/run-tests", (req, res) => {
   // and escape regex metacharacters so titles with `→`, `:`, `(`, `)`, etc. match
   // literally. Required for loop-generated tests that share the same line number.
   const grepArg = grep
-    ? grep.split(" > ").pop().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    ? grep
+        .split(" > ")
+        .pop()
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
     : null;
   const parts = [];
   if (project) parts.push(project);
   if (baseURL) parts.push(baseURL);
   if (startUrl) parts.push("patient_flow");
-  parts.push(label || (file ? `${file}${line ? ":" + line : ""}` : "all tests"));
+  parts.push(
+    label || (file ? `${file}${line ? ":" + line : ""}` : "all tests"),
+  );
   send("start", `Starting Playwright — ${parts.join(" · ")}...`);
 
   const runStartTime = Date.now();
@@ -607,35 +723,39 @@ app.get("/api/run-tests", (req, res) => {
   const tdEnv = {};
   if (tdOverridesB64) {
     try {
-      const td = JSON.parse(Buffer.from(tdOverridesB64, "base64").toString("utf8"));
-      const u  = td.user     || {};
-      const p  = td.payment  || {};
+      const td = JSON.parse(
+        Buffer.from(tdOverridesB64, "base64").toString("utf8"),
+      );
+      const u = td.user || {};
+      const p = td.payment || {};
       const sh = td.shipping || {};
-      const set = (key, val) => { if (val != null && String(val).trim() !== "") tdEnv[key] = String(val); };
-      set("TD_FIRST_NAME",          u.firstName);
-      set("TD_LAST_NAME",           u.lastName);
-      set("TD_GENDER",              u.gender);
-      set("TD_EMAIL",               u.email);
-      set("TD_PHONE",               u.phone);
-      set("TD_POSTCODE",            u.postcode);
-      set("TD_GUARDIAN_NAME",       u.guardianName);
-      set("TD_PASSWORD",            u.password);
-      set("TD_CONFIRM_PASSWORD",    u.confirmPassword);
-      set("TD_DOB_DAY",             u.dobDay);
-      set("TD_DOB_MONTH",           u.dobMonth);
-      set("TD_DOB_YEAR",            u.dobYear);
-      set("TD_CARD_HOLDER",         p.cardholderName);
-      set("TD_CARD_NUMBER",         p.cardNumber);
-      set("TD_CARD_EXPIRY",         p.expiryDate);
-      set("TD_CARD_CVV",            p.securityCode);
-      set("TD_SHIP_MODE",           sh.shippingMode);
-      set("TD_SHIP_ADDRESS_TYPE",   sh.addressType);
-      set("TD_SHIP_ADDRESS1",       sh.addressLine1);
-      set("TD_SHIP_ADDRESS2",       sh.addressLine2);
-      set("TD_SHIP_CITY",           sh.townCity);
-      set("TD_SHIP_POSTCODE",       sh.postalCode);
+      const set = (key, val) => {
+        if (val != null && String(val).trim() !== "") tdEnv[key] = String(val);
+      };
+      set("TD_FIRST_NAME", u.firstName);
+      set("TD_LAST_NAME", u.lastName);
+      set("TD_GENDER", u.gender);
+      set("TD_EMAIL", u.email);
+      set("TD_PHONE", u.phone);
+      set("TD_POSTCODE", u.postcode);
+      set("TD_GUARDIAN_NAME", u.guardianName);
+      set("TD_PASSWORD", u.password);
+      set("TD_CONFIRM_PASSWORD", u.confirmPassword);
+      set("TD_DOB_DAY", u.dobDay);
+      set("TD_DOB_MONTH", u.dobMonth);
+      set("TD_DOB_YEAR", u.dobYear);
+      set("TD_CARD_HOLDER", p.cardholderName);
+      set("TD_CARD_NUMBER", p.cardNumber);
+      set("TD_CARD_EXPIRY", p.expiryDate);
+      set("TD_CARD_CVV", p.securityCode);
+      set("TD_SHIP_MODE", sh.shippingMode);
+      set("TD_SHIP_ADDRESS_TYPE", sh.addressType);
+      set("TD_SHIP_ADDRESS1", sh.addressLine1);
+      set("TD_SHIP_ADDRESS2", sh.addressLine2);
+      set("TD_SHIP_CITY", sh.townCity);
+      set("TD_SHIP_POSTCODE", sh.postalCode);
       set("TD_SHIP_ADDRESS_ACTION", sh.addressAction);
-      set("TD_PAYMENT_METHOD",      sh.paymentMethod);
+      set("TD_PAYMENT_METHOD", sh.paymentMethod);
       const overrideCount = Object.keys(tdEnv).length;
       if (overrideCount > 0) {
         const summary = Object.entries(tdEnv)
@@ -649,7 +769,13 @@ app.get("/api/run-tests", (req, res) => {
   }
 
   const runOutputDir = path.join(__dirname, "test-results", `run-${runId}`);
-  const args = ["exec", "playwright", "test", "--reporter=list", `--output=${runOutputDir}`];
+  const args = [
+    "exec",
+    "playwright",
+    "test",
+    "--reporter=list",
+    `--output=${runOutputDir}`,
+  ];
   const effectiveProject = project || "helathya";
   if (effectiveProject) args.push(`--project=${effectiveProject}`);
   // Prefer file:line targeting when available. Always apply grep on top if provided
@@ -683,8 +809,17 @@ app.get("/api/run-tests", (req, res) => {
   // Hard timeout — kill stuck processes after MAX_RUN_MS
   const killTimeout = setTimeout(() => {
     if (!finished) {
-      send("log", `⚠ Process timed out after ${MAX_RUN_MS / 60000} minutes — killing.`);
-      try { process.kill(-proc.pid, "SIGKILL"); } catch (_) { try { proc.kill("SIGKILL"); } catch (_2) {} }
+      send(
+        "log",
+        `⚠ Process timed out after ${MAX_RUN_MS / 60000} minutes — killing.`,
+      );
+      try {
+        process.kill(-proc.pid, "SIGKILL");
+      } catch (_) {
+        try {
+          proc.kill("SIGKILL");
+        } catch (_2) {}
+      }
     }
   }, MAX_RUN_MS);
 
@@ -717,15 +852,26 @@ app.get("/api/run-tests", (req, res) => {
       completedRunIds.delete(oldest);
     }
     // Force-drain stdio — browser subprocesses can hold pipes open even after playwright exits
-    try { proc.stdout.destroy(); } catch (_) {}
-    try { proc.stderr.destroy(); } catch (_) {}
+    try {
+      proc.stdout.destroy();
+    } catch (_) {}
+    try {
+      proc.stderr.destroy();
+    } catch (_) {}
     // Delay scan to allow Playwright to finish flushing .webm video files to disk
     setTimeout(() => {
       const passed = (stdout.match(/\d+ passed/)?.[0] || "").trim();
       const failed = (stdout.match(/\d+ failed/)?.[0] || "").trim();
       const skipped = (stdout.match(/\d+ skipped/)?.[0] || "").trim();
       const artifacts = findArtifactsInDir(runOutputDir);
-      send("done", { code, passed, failed, skipped, success: code === 0, artifacts });
+      send("done", {
+        code,
+        passed,
+        failed,
+        skipped,
+        success: code === 0,
+        artifacts,
+      });
       res.end();
     }, 1500);
   });
@@ -734,7 +880,13 @@ app.get("/api/run-tests", (req, res) => {
     // Client disconnected — only kill if not already finished
     if (!finished) {
       activeProcs.delete(runId);
-      try { process.kill(-proc.pid, "SIGKILL"); } catch (_) { try { proc.kill(); } catch (_2) {} }
+      try {
+        process.kill(-proc.pid, "SIGKILL");
+      } catch (_) {
+        try {
+          proc.kill();
+        } catch (_2) {}
+      }
     }
     clearInterval(heartbeat);
     clearTimeout(killTimeout);
@@ -750,8 +902,12 @@ app.post("/api/stop-test", (req, res) => {
   if (runId) {
     const entry = activeProcs.get(runId);
     if (!entry) return res.json({ stopped: false, reason: "run not found" });
-    try { process.kill(-entry.proc.pid, "SIGKILL"); } catch (_) {
-      try { entry.proc.kill("SIGKILL"); } catch (_2) {}
+    try {
+      process.kill(-entry.proc.pid, "SIGKILL");
+    } catch (_) {
+      try {
+        entry.proc.kill("SIGKILL");
+      } catch (_2) {}
     }
     activeProcs.delete(runId);
     return res.json({ stopped: true });
@@ -759,8 +915,12 @@ app.post("/api/stop-test", (req, res) => {
   // Stop all
   let count = 0;
   for (const [, entry] of activeProcs) {
-    try { process.kill(-entry.proc.pid, "SIGKILL"); } catch (_) {
-      try { entry.proc.kill("SIGKILL"); } catch (_2) {}
+    try {
+      process.kill(-entry.proc.pid, "SIGKILL");
+    } catch (_) {
+      try {
+        entry.proc.kill("SIGKILL");
+      } catch (_2) {}
     }
     count++;
   }
@@ -773,7 +933,7 @@ app.post("/api/launch-ui", (_req, res) => {
 });
 
 app.post("/api/stop-ui", (_req, res) => {
-  res.json(stopUI());
+  res.json({ ...stopUI() });
 });
 
 app.get("/api/ui-status", (_req, res) => {
