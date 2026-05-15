@@ -36,8 +36,31 @@ export class BookingPage {
   async selectPreferredSessionType(
     prefs: BookingPreferences = BOOKING_PREFERENCES,
   ) {
-    const radioGroup = this.page.locator(".appointment-type-radio-group");
-    if (!(await radioGroup.isVisible({ timeout: 5_000 }).catch(() => false))) {
+    // Try multiple container selectors
+    const radioGroup = this.page.locator(
+      [
+        ".appointment-type-radio-group",
+        ".ant-radio-group",
+        '[role="radiogroup"]',
+        "form",
+        ".appointment-selection",
+      ].join(", "),
+    );
+
+    const isGroupVisible = await radioGroup
+      .first()
+      .isVisible({ timeout: 5_000 })
+      .catch(() => false);
+
+    const hasSelectionHeading = await this.page
+      .locator(':text("Select appointment type")')
+      .isVisible()
+      .catch(() => false);
+
+    if (!isGroupVisible && !hasSelectionHeading) {
+      console.log(
+        "[BookingPage] No appointment type selection container or heading found — skipping",
+      );
       return;
     }
 
@@ -49,21 +72,37 @@ export class BookingPage {
         "In person",
         "Clinic",
         "Face to Face",
+        "In-pharmacy",
+        "In pharmacy",
+        "At pharmacy",
       ],
-      "phone-call": ["Phone", "Phone call", "Telephone", "Phone call"],
+      "phone-call": ["Phone", "Phone call", "Telephone"],
+      private: ["Private Consultation", "Private"],
     };
 
     // Normalize key lookup: "Face to Face" -> "face-to-face"
     const normalizedType = (prefs.appointmentType || "video")
       .toLowerCase()
       .replace(/\s+/g, "-");
-    const targetLabels = typeLabels[normalizedType] || [prefs.appointmentType];
+    let targetLabels = typeLabels[normalizedType] || [prefs.appointmentType];
+
+    // If we're looking for Face to Face, also consider "In-pharmacy" as a very likely match
+    if (normalizedType === "face-to-face") {
+      targetLabels = [...new Set([...targetLabels, ...typeLabels["face-to-face"]])];
+    }
+
+    console.log(
+      `[BookingPage] Looking for appointment type matching: ${targetLabels.join(", ")}`,
+    );
 
     for (const label of targetLabels) {
-      const option = radioGroup
-        .locator("label, .ant-radio-wrapper, .ant-radio-button-wrapper")
-        .filter({ hasText: label })
+      const option = this.page
+        .locator(
+          "label, .ant-radio-wrapper, .ant-radio-button-wrapper, .card, [role='radio'], .appointment-type-item",
+        )
+        .filter({ hasText: new RegExp(`^${label}$|^${label}\\s`, "i") })
         .first();
+
       if (await option.isVisible().catch(() => false)) {
         const isDisabled = await option
           .evaluate((el) => {
@@ -93,8 +132,17 @@ export class BookingPage {
         }
 
         console.log(`[BookingPage] Selecting appointment type: ${label}`);
-        await option.click();
-        await this.page.waitForTimeout(1500);
+        
+        // Try clicking the input inside first if it's an Ant Design radio
+        const innerRadio = option.locator('input[type="radio"]').first();
+        if (await innerRadio.isVisible().catch(() => false)) {
+          await innerRadio.click({ force: true });
+          await innerRadio.evaluate(el => el.dispatchEvent(new Event('change', { bubbles: true })));
+        } else {
+          await option.click({ force: true });
+        }
+        
+        await this.page.waitForTimeout(2000);
         return;
       }
     }
@@ -109,11 +157,36 @@ export class BookingPage {
     console.log(
       "[BookingPage] Preferred appointment type not found — clicking first available",
     );
-    const firstRadio = radioGroup
-      .locator(".ant-radio-wrapper, .ant-radio-button-wrapper, label")
-      .first();
-    await firstRadio.click();
-    await this.page.waitForTimeout(1500);
+    const radioLocators = [
+      ".appointment-type-radio-group .ant-radio-wrapper",
+      ".ant-radio-wrapper",
+      ".ant-radio-button-wrapper",
+      "label",
+      "[role='radio']"
+    ];
+    
+    for (const sel of radioLocators) {
+      const candidates = this.page.locator(sel);
+      const count = await candidates.count();
+      for (let i = 0; i < count; i++) {
+        const candidate = candidates.nth(i);
+        const text = await candidate.textContent().catch(() => "");
+        if (text && text.trim().length > 0) {
+          console.log(`[BookingPage] Fallback: clicking appointment type candidate "${text.trim()}"`);
+          const inner = candidate.locator('input[type="radio"]').first();
+          if (await inner.isVisible().catch(() => false)) {
+            await inner.click({ force: true });
+            await inner.evaluate(el => el.dispatchEvent(new Event('change', { bubbles: true })));
+          } else {
+            await candidate.click({ force: true });
+          }
+          await this.page.waitForTimeout(2000);
+          return;
+        }
+      }
+    }
+    
+    console.log("[BookingPage] Absolute fallback failed — no appointment types found to click");
   }
 
   /**
