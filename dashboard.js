@@ -36,8 +36,6 @@ function readPharmacies() {
     const urlM = line.match(/\bbaseURL\s*:\s*["']([^"']+)["']/);
     const skipM = line.match(/\bciSkip\s*:\s*(true|false)/);
     const projM = line.match(/\bsanityProjectId\s*:\s*["']([^"']+)["']/);
-    // Only start a new entry on name: lines inside the PHARMACY_SITES array
-    // (interface fields have no string literal after the colon, so nameM won't match there)
     if (nameM) cur = { name: nameM[1], baseURL: "", ciSkip: false };
     if (cur && urlM) cur.baseURL = urlM[1];
     if (cur && skipM) cur.ciSkip = skipM[1] === "true";
@@ -54,14 +52,13 @@ let _testListCache = null;
 let _testListCacheAt = 0;
 const TEST_LIST_TTL_MS = 30_000;
 let lastRunStartTime = 0;
-const activeProcs = new Map(); // runId → { proc, startTime }
-const completedRunIds = new Set(); // prevent EventSource auto-reconnect from restarting tests
-const MAX_RUN_MS = 10 * 60 * 1000; // 10-minute hard timeout per run
+const activeProcs = new Map();
+const completedRunIds = new Set();
+const MAX_RUN_MS = 10 * 60 * 1000;
 
 function flattenSuites(suites, parentTitles = [], depth = 0) {
   const out = [];
   for (const s of suites || []) {
-    // Skip file-level suite title (depth 0); keep describe titles
     const titles =
       depth === 0 ? parentTitles : [...parentTitles, s.title].filter(Boolean);
     for (const spec of s.specs || []) {
@@ -97,7 +94,6 @@ function listTests() {
     proc.on("close", () => {
       try {
         const json = JSON.parse(out);
-        // Dedupe by fullTitle (same test repeats per project)
         const all = flattenSuites(json.suites || []);
         const seen = new Set();
         const unique = [];
@@ -118,7 +114,7 @@ function listTests() {
   });
 }
 
-// ── Flow configs (mirrors flow-configs.ts — JS copy for dashboard) ────────────
+// ── Flow configs ──────────────────────────────────────────────────────────────
 const FLOW_CONFIGS = [
   {
     name: "NHS — next available slot",
@@ -152,17 +148,15 @@ const FLOW_CONFIGS = [
   },
 ];
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function readTestData() {
   const src = fs.readFileSync(TEST_DATA_PATH, "utf8");
 
-  // Direct literal: key: "value"
   const get = (key) => {
     const m = src.match(new RegExp(`${key}:\\s*"([^"]*)"`));
     return m ? m[1] : "";
   };
-  // Env-var pattern: TD_KEY || "fallback"  (handles both direct and cast forms)
   const getEnv = (tdKey) => {
     const m = src.match(new RegExp(`${tdKey}\\s*\\|\\|\\s*"([^"]*)"`));
     return m ? m[1] : "";
@@ -176,7 +170,6 @@ function readTestData() {
     return m ? m[1] === "true" : false;
   };
 
-  // Active condition — find the uncommented journeyType line inside ACTIVE_CONDITION block
   const activeCondBlock = src.match(/ACTIVE_CONDITION\s*=\s*\{([^}]+)\}/s);
   let journeyType = "nhs";
   if (activeCondBlock) {
@@ -293,7 +286,6 @@ function launchUI() {
   uiProc.stdout.on("data", onData);
   uiProc.stderr.on("data", onData);
 
-  // Give it time to boot even if we miss the log line
   setTimeout(() => {
     uiReady = true;
   }, 4000);
@@ -314,7 +306,7 @@ function stopUI() {
   return { stopped: true };
 }
 
-// ── Artifact discovery ───────────────────────────────────────────────────────
+// ── Artifact discovery ────────────────────────────────────────────────────────
 
 function findArtifactsAfter(since) {
   const dir = path.join(__dirname, "test-results");
@@ -422,8 +414,6 @@ async function resolveHealthyaLink(input) {
     let resolved = res.url || parsed.toString();
     const contentType = res.headers.get("content-type") || "";
 
-    // Some short links return HTML/JS redirects where fetch().url does not
-    // change to the final patient_flow URL. Parse response body as fallback.
     if (/text\/html|application\/xhtml\+xml/i.test(contentType)) {
       const body = await res.text().catch(() => "");
       const extracted = extractPatientFlowFromText(body);
@@ -473,135 +463,198 @@ function journeysForStep(step) {
   }
 }
 
+// ── OPTIMISED: detectFlowFromResolvedUrl ──────────────────────────────────────
+// Key changes vs original:
+//  1. waitUntil "domcontentloaded" only — never "networkidle" (was the #1 cause of 30-45s waits)
+//  2. Single goto with a reasonable 20s timeout; no sequential retry goto
+//  3. No hardcoded waitForTimeout sleeps — replaced with race-based waitForSelector
+//  4. Selector timeouts slashed: landing selector 3s, post-click 2s
+//  5. hasVisible uses Promise.any across all selectors simultaneously (parallel),
+//     with a single 1s timeout ceiling instead of 400ms × up to 5 elements × 4 groups
+//  6. Get-started click only if selector is already attached (no extra wait)
+// ─────────────────────────────────────────────────────────────────────────────
 async function detectFlowFromResolvedUrl(url) {
   const { chromium } = require("@playwright/test");
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
     viewport: { width: 1280, height: 1000 },
-    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
   });
   const page = await context.newPage();
+
+  // Block heavy assets — we only need HTML/JS to detect the page shape
+  await page.route(
+    /\.(woff2?|ttf|eot|otf|mp4|webm|svg|png|jpe?g|gif|ico|css)(\?.*)?$/i,
+    (route) => route.abort(),
+  );
+
   try {
-    await page.goto(url, { waitUntil: "networkidle", timeout: 45_000 }).catch(() => 
-      page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 })
-    );
-    
-    // Wait for the introduction wrapper or a fallback
-    await page.waitForSelector('.introduction-wrapper, button:has-text("Get Started")', { timeout: 10000 }).catch(() => {});
-    await page.waitForTimeout(2000); // Give it a bit more time to render text
+    // domcontentloaded is enough; networkidle can hang for 30-45 s on SPAs
+    await page
+      .goto(url, { waitUntil: "domcontentloaded", timeout: 20_000 })
+      .catch(() => {});
 
-    // Detect "How it works" points to predict journey BEFORE clicking "Get Started"
-    const predictedJourney = await page.evaluate(() => {
-      // Look for the "How it works" section specifically if possible
-      const introWrapper = document.querySelector(".introduction-wrapper");
-      const searchContext = introWrapper || document.body;
-      
-      // Try multiple ways to get text
-      const allText = searchContext.innerText || searchContext.textContent || "";
-      const text = allText.toLowerCase();
+    // Wait for the page to paint something useful — max 3 s, resolve early if found
+    await page
+      .waitForSelector(
+        '.introduction-wrapper, [class*="questionnaire"], input[type="email"], input[name="first_name"], .rota-slot, input[autocomplete="cc-number"]',
+        { timeout: 3_000 },
+      )
+      .catch(() => {});
 
-      // More robust patterns for the journey steps
-      const pointPatterns = [
-        { label: "Sign Up", patterns: ["receive advice", "treatment", "personal details", "contact details", "sign up", "register", "create account"] },
-        { label: "Questionnaire", patterns: ["checking your symptoms", "medical questions", "assessment", "questionnaire", "clinical questions", "medical history"] },
-        { label: "Booking", patterns: ["book your appointment", "select a slot", "choose a time", "appointment time", "booking", "schedule", "appointment date"] }
-      ];
+    // Extract journey prediction from rendered text (no extra sleep needed)
+    const predictedJourney = await page
+      .evaluate(() => {
+        const introWrapper = document.querySelector(".introduction-wrapper");
+        const searchContext = introWrapper || document.body;
+        const text = (
+          searchContext.innerText ||
+          searchContext.textContent ||
+          ""
+        ).toLowerCase();
 
-      const points = [];
+        const pointPatterns = [
+          {
+            label: "Sign Up",
+            patterns: [
+              "receive advice",
+              "treatment",
+              "personal details",
+              "contact details",
+              "sign up",
+              "register",
+              "create account",
+            ],
+          },
+          {
+            label: "Questionnaire",
+            patterns: [
+              "checking your symptoms",
+              "medical questions",
+              "assessment",
+              "questionnaire",
+              "clinical questions",
+              "medical history",
+            ],
+          },
+          {
+            label: "Booking",
+            patterns: [
+              "book your appointment",
+              "select a slot",
+              "choose a time",
+              "appointment time",
+              "booking",
+              "schedule",
+              "appointment date",
+            ],
+          },
+        ];
 
-      pointPatterns.forEach(point => {
-        for (const p of point.patterns) {
-          const idx = text.indexOf(p.toLowerCase());
-          if (idx !== -1) {
-            points.push({ label: point.label, idx: idx });
-            break; // Found one pattern for this point
+        const points = [];
+        for (const point of pointPatterns) {
+          for (const p of point.patterns) {
+            const idx = text.indexOf(p);
+            if (idx !== -1) {
+              points.push({ label: point.label, idx });
+              break;
+            }
           }
         }
-      });
+        points.sort((a, b) => a.idx - b.idx);
+        return points.length ? points.map((p) => p.label).join(" -> ") : null;
+      })
+      .catch(() => null);
 
-      // Sort by appearance order on the page
-      points.sort((a, b) => a.idx - b.idx);
+    // Click "Get Started" only when the button is already in the DOM (no extra wait)
+    const getStartedSel =
+      'button:has-text("Get Started"), a:has-text("Get Started"), button:has-text("Start"), a:has-text("Start")';
+    let clickedGetStarted = false;
 
-      if (points.length === 0) return null;
-
-      return points.map((p) => p.label).join(" -> ");
-    });
-
-    const getStartedBtn = page
-      .locator(
-        'button:has-text("Get Started"), a:has-text("Get Started"), button:has-text("Start"), a:has-text("Start")',
-      )
-      .first();
-    const getStartedVisible = await getStartedBtn
-      .isVisible()
-      .catch(() => false);
-
-    // ONLY click Get Started if we actually detected journey data (the "How it works" points)
-    // or if we are reasonably sure it's a landing page but maybe text extraction missed something.
-    // The user specifically asked NOT to click if journey data is not detected.
-    if (getStartedVisible && predictedJourney) {
-      await getStartedBtn.click().catch(() => {});
-      await page.waitForLoadState("domcontentloaded").catch(() => {});
-      await page.waitForTimeout(1500);
-    } else if (getStartedVisible && !predictedJourney) {
-      console.log("Landing page detected but no journey data found in text; skipping Get Started click per requirement.");
+    if (predictedJourney) {
+      const getStartedBtn = page.locator(getStartedSel).first();
+      const visible = await getStartedBtn.isVisible().catch(() => false);
+      if (visible) {
+        await getStartedBtn.click().catch(() => {});
+        clickedGetStarted = true;
+        // Wait for the next meaningful element — max 2 s, no fixed sleep
+        await page
+          .waitForSelector(
+            'input[type="email"], input[name="first_name"], .rota-slot, input[autocomplete="cc-number"], [class*="questionnaire"], input[type="radio"]',
+            { timeout: 2_000 },
+          )
+          .catch(() => {});
+      }
+    } else {
+      console.log(
+        "Landing page detected but no journey data found in text; skipping Get Started click per requirement.",
+      );
     }
 
-    const hasVisible = async (selectors) => {
-      for (const sel of selectors) {
-        const loc = page.locator(sel);
-        const count = await loc.count().catch(() => 0);
-        const max = Math.min(count, 5);
-        for (let i = 0; i < max; i++) {
-          const ok = await loc
-            .nth(i)
-            .isVisible({ timeout: 400 })
-            .catch(() => false);
-          if (ok) return true;
-        }
+    // ── Parallel visibility checks — one Promise.race per group ──────────────
+    const anyVisible = async (selectors, timeoutMs = 1_000) => {
+      try {
+        await Promise.race([
+          ...selectors.map((sel) =>
+            page
+              .locator(sel)
+              .first()
+              .waitFor({ state: "visible", timeout: timeoutMs }),
+          ),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("timeout")), timeoutMs),
+          ),
+        ]);
+        return true;
+      } catch (_) {
+        return false;
       }
-      return false;
     };
 
-    const paymentIndicators = [
-      ':text("Complete your payment")',
-      'input[autocomplete="cc-number"]',
-      'button:has-text("Pay")',
-    ];
-    const bookingIndicators = [
-      ".appointment-type-radio-group",
-      ".rota-slot",
-      'button:has-text("Book Now")',
-      ':text("Appointment type")',
-      ':text("Book your appointment")',
-    ];
-    const signupIndicators = [
-      'input[type="email"]',
-      'input[name="first_name"]',
-      ':text("Enter your contact details")',
-      'button:has-text("Sign Up")',
-    ];
-    const questionnaireIndicators = [
-      ':text("Questionnaires")',
-      "input[type=radio]",
-      "input[type=checkbox]",
-      "textarea",
-      '[class*="questionnaire"]',
-    ];
+    // Run all four checks in parallel rather than sequentially
+    const [isPayment, isBooking, isSignup, isQuestionnaire] = await Promise.all(
+      [
+        anyVisible([
+          ':text("Complete your payment")',
+          'input[autocomplete="cc-number"]',
+          'button:has-text("Pay")',
+        ]),
+        anyVisible([
+          ".appointment-type-radio-group",
+          ".rota-slot",
+          'button:has-text("Book Now")',
+          ':text("Appointment type")',
+          ':text("Book your appointment")',
+        ]),
+        anyVisible([
+          'input[type="email"]',
+          'input[name="first_name"]',
+          ':text("Enter your contact details")',
+          'button:has-text("Sign Up")',
+        ]),
+        anyVisible([
+          ':text("Questionnaires")',
+          "input[type=radio]",
+          "input[type=checkbox]",
+          "textarea",
+          '[class*="questionnaire"]',
+        ]),
+      ],
+    );
 
     let step = "unknown";
-    if (await hasVisible(paymentIndicators)) step = "payment";
-    else if (await hasVisible(bookingIndicators)) step = "appointment_booking";
-    else if (await hasVisible(signupIndicators)) step = "sign_up";
-    else if (await hasVisible(questionnaireIndicators))
-      step = "questionnaire_submit";
+    if (isPayment) step = "payment";
+    else if (isBooking) step = "appointment_booking";
+    else if (isSignup) step = "sign_up";
+    else if (isQuestionnaire) step = "questionnaire_submit";
 
     return {
       step,
       predictedJourney,
       currentUrl: page.url(),
       title: await page.title().catch(() => ""),
-      clickedGetStarted: getStartedVisible,
+      clickedGetStarted,
     };
   } finally {
     await page.close().catch(() => {});
@@ -609,7 +662,7 @@ async function detectFlowFromResolvedUrl(url) {
   }
 }
 
-// ── Routes ───────────────────────────────────────────────────────────────────
+// ── Routes ────────────────────────────────────────────────────────────────────
 
 app.get("/api/test-data", (req, res) => {
   try {
@@ -620,8 +673,6 @@ app.get("/api/test-data", (req, res) => {
 });
 
 app.post("/api/test-data", (_req, res) => {
-  // Test data overrides are now browser-side only (passed as env vars at run time).
-  // This endpoint is kept for compatibility but does nothing.
   res.json({ ok: true });
 });
 
@@ -630,7 +681,6 @@ app.get("/api/flow-configs", (_req, res) => {
 });
 
 app.get("/api/pharmacies", (_req, res) => {
-  // No-store prevents Codespaces proxy and browsers from caching stale [] responses
   res.set("Cache-Control", "no-store, no-cache, must-revalidate");
   try {
     res.json(readPharmacies());
@@ -651,7 +701,9 @@ app.get("/api/tests", async (_req, res) => {
 app.post("/api/upload-links", (req, res) => {
   upload.single("file")(req, res, (err) => {
     if (err) {
-      return res.status(400).json({ error: "File upload error: " + err.message });
+      return res
+        .status(400)
+        .json({ error: "File upload error: " + err.message });
     }
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
@@ -738,7 +790,6 @@ app.get("/api/run-tests", (req, res) => {
     req.query.runId ||
     `run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
-  // EventSource auto-reconnects when server closes the stream — prevent restarting a completed run
   if (completedRunIds.has(runId)) {
     send("done", {
       code: 0,
@@ -758,15 +809,11 @@ app.get("/api/run-tests", (req, res) => {
   const file = req.query.file;
   const line = req.query.line;
   const label = req.query.label;
-  const tdOverridesB64 = req.query.td; // base64 JSON test data overrides from browser
+  const tdOverridesB64 = req.query.td;
   const baseURL =
     typeof req.query.baseURL === "string" ? req.query.baseURL.trim() : "";
   const startUrl =
     typeof req.query.startUrl === "string" ? req.query.startUrl.trim() : "";
-  // Playwright's --grep is a regex matched against the test's own title (not the
-  // describe-joined fullTitle). Use only the part after the last " > " separator,
-  // and escape regex metacharacters so titles with `→`, `:`, `(`, `)`, etc. match
-  // literally. Required for loop-generated tests that share the same line number.
   const grepArg = grep
     ? grep
         .split(" > ")
@@ -785,7 +832,6 @@ app.get("/api/run-tests", (req, res) => {
   const runStartTime = Date.now();
   lastRunStartTime = runStartTime;
 
-  // Build TD_* env vars from browser-side overrides — no file modification needed
   const tdEnv = {};
   if (tdOverridesB64) {
     try {
@@ -844,8 +890,6 @@ app.get("/api/run-tests", (req, res) => {
   ];
   const effectiveProject = project || "helathya";
   if (effectiveProject) args.push(`--project=${effectiveProject}`);
-  // Prefer file:line targeting when available. Always apply grep on top if provided
-  // (grep is essential for loop-generated tests that share the same line number).
   if (file) {
     args.push(line ? `${file}:${line}` : file);
     if (grepArg) args.push("--grep", grepArg);
@@ -861,7 +905,7 @@ app.get("/api/run-tests", (req, res) => {
       ...(baseURL ? { BASE_URL: baseURL } : {}),
       ...(startUrl ? { START_URL: startUrl } : {}),
     },
-    detached: true, // allows killing the whole process group
+    detached: true,
   });
   activeProcs.set(runId, { proc, startTime: runStartTime });
 
@@ -869,10 +913,8 @@ app.get("/api/run-tests", (req, res) => {
   let stderr = "";
   let finished = false;
 
-  // Heartbeat — keeps SSE alive and prevents proxy timeouts
   const heartbeat = setInterval(() => send("ping", null), 15_000);
 
-  // Hard timeout — kill stuck processes after MAX_RUN_MS
   const killTimeout = setTimeout(() => {
     if (!finished) {
       send(
@@ -912,19 +954,16 @@ app.get("/api/run-tests", (req, res) => {
     clearTimeout(killTimeout);
     activeProcs.delete(runId);
     completedRunIds.add(runId);
-    // Trim completedRunIds to avoid unbounded growth
     if (completedRunIds.size > 500) {
       const [oldest] = completedRunIds;
       completedRunIds.delete(oldest);
     }
-    // Force-drain stdio — browser subprocesses can hold pipes open even after playwright exits
     try {
       proc.stdout.destroy();
     } catch (_) {}
     try {
       proc.stderr.destroy();
     } catch (_) {}
-    // Delay scan to allow Playwright to finish flushing .webm video files to disk
     setTimeout(() => {
       const passed = (stdout.match(/\d+ passed/)?.[0] || "").trim();
       const failed = (stdout.match(/\d+ failed/)?.[0] || "").trim();
@@ -943,7 +982,6 @@ app.get("/api/run-tests", (req, res) => {
   });
 
   req.on("close", () => {
-    // Client disconnected — only kill if not already finished
     if (!finished) {
       activeProcs.delete(runId);
       try {
@@ -978,7 +1016,6 @@ app.post("/api/stop-test", (req, res) => {
     activeProcs.delete(runId);
     return res.json({ stopped: true });
   }
-  // Stop all
   let count = 0;
   for (const [, entry] of activeProcs) {
     try {
@@ -1015,7 +1052,7 @@ app.get("/api/last-result", (req, res) => {
   }
 });
 
-// ── Serve dashboard ──────────────────────────────────────────────────────────
+// ── Serve dashboard ───────────────────────────────────────────────────────────
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "dashboard-public/index.html"));
 });
