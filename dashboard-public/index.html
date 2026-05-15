@@ -1785,7 +1785,7 @@
 
     function selectRun(runId) {
       selectedRunId = runId;
-      document.querySelectorAll(".run-card").forEach(c => {
+      document.querySelectorAll(".run-card").forEach((c) => {
         c.classList.toggle("selected", c.dataset.runid === runId);
       });
       renderSelectedRun();
@@ -1806,17 +1806,26 @@
         hideCounts();
       } else if (run.status === "pass") {
         setStatus("pass", `Passed: ${run.label}`);
-        if (run.counts) showCounts(run.counts.passed, run.counts.failed, run.counts.skipped);
+        if (run.counts)
+          showCounts(run.counts.passed, run.counts.failed, run.counts.skipped);
       } else if (run.status === "fail") {
         setStatus("fail", `Failed: ${run.label}`);
-        if (run.counts) showCounts(run.counts.passed, run.counts.failed, run.counts.skipped);
+        if (run.counts)
+          showCounts(run.counts.passed, run.counts.failed, run.counts.skipped);
       } else {
         setStatus("idle", `Stopped: ${run.label}`);
         hideCounts();
       }
 
+      // Restore the specific journey stepper for this run
+      if (run.predictedJourney) {
+        renderJourneyFlow(run.predictedJourney);
+      } else {
+        resetJourneyFlowUI();
+      }
+
       if (run.videoUrls && run.videoUrls.length) {
-        const idx = allVideos.findIndex(v => v.runId === selectedRunId);
+        const idx = allVideos.findIndex((v) => v.runId === selectedRunId);
         if (idx >= 0) showVideoAt(idx);
       } else {
         videoEl.style.display = "none";
