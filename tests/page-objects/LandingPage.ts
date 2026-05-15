@@ -24,6 +24,37 @@ export class LandingPage {
     return headingVisible || getStartedVisible;
   }
 
+  async detectJourneyFlow(): Promise<string | null> {
+    return await this.page.evaluate(() => {
+      const introWrapper = document.querySelector(".introduction-wrapper");
+      const searchContext = introWrapper || document.body;
+      const allText = searchContext.innerText || searchContext.textContent || "";
+      const text = allText.toLowerCase();
+
+      const pointPatterns = [
+        { label: "Sign Up", patterns: ["receive advice", "treatment", "personal details", "contact details", "sign up", "register", "create account"] },
+        { label: "Questionnaire", patterns: ["checking your symptoms", "medical questions", "assessment", "questionnaire", "clinical questions", "medical history"] },
+        { label: "Booking", patterns: ["book your appointment", "select a slot", "choose a time", "appointment time", "booking", "schedule", "appointment date"] }
+      ];
+
+      const points: { label: string, idx: number }[] = [];
+
+      pointPatterns.forEach(point => {
+        for (const p of point.patterns) {
+          const idx = text.indexOf(p.toLowerCase());
+          if (idx !== -1) {
+            points.push({ label: point.label, idx: idx });
+            break; 
+          }
+        }
+      });
+
+      points.sort((a, b) => a.idx - b.idx);
+      if (points.length === 0) return null;
+      return points.map((p) => p.label).join(" -> ");
+    });
+  }
+
   async clickGetStartedIfVisible(): Promise<boolean> {
     const container = this.page
       .locator('div:has(> .introduction-wrapper), .introduction-wrapper')

@@ -366,8 +366,13 @@ async function runConditionFlowImpl(
     await page.goto(startUrl, { waitUntil: "domcontentloaded" });
     const landingDetected = await landingPage.isVisible();
     if (landingDetected) {
-      console.log("✔ Landing page detected — clicking Get Started");
-      await landingPage.clickGetStartedIfVisible();
+      const journey = await landingPage.detectJourneyFlow();
+      if (journey) {
+        console.log(`✔ Landing page detected with journey: ${journey} — clicking Get Started`);
+        await landingPage.clickGetStartedIfVisible();
+      } else {
+        console.log("⚠ Landing page detected but no journey data found; skipping Get Started click per requirements.");
+      }
     } else {
       await landingPage.clickGetStartedIfVisible();
     }
@@ -563,9 +568,15 @@ async function runConditionFlowImpl(
     switch (step) {
       case "landing": {
         console.log("→ Handling landing step (Get Started)");
-        const clicked = await landingPage.clickGetStartedIfVisible();
-        if (!clicked) {
-          console.log("⚠ Landing detected but Get Started not clickable yet");
+        const journey = await landingPage.detectJourneyFlow();
+        if (journey) {
+          console.log(`✔ Detected journey: ${journey} — clicking Get Started`);
+          const clicked = await landingPage.clickGetStartedIfVisible();
+          if (!clicked) {
+            console.log("⚠ Landing detected but Get Started not clickable yet");
+          }
+        } else {
+          console.log("⚠ Landing detected but no journey data found; skipping click per requirements.");
         }
         await page.waitForTimeout(1200);
         break;
