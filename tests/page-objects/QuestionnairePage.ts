@@ -16,6 +16,7 @@ export class QuestionnairePage {
   private readonly answeredRuleKeys = new Set<string>();
   private retryAttempt = 0;
   private readonly answeredGenericQuestions = new Set<string>();
+  private endAssessmentClicked = false;
 
   constructor(page: Page) {
     this.page = page;
@@ -28,6 +29,11 @@ export class QuestionnairePage {
   resetAnswerState(): void {
     this.answeredRuleKeys.clear();
     this.answeredGenericQuestions.clear();
+    this.endAssessmentClicked = false;
+  }
+
+  wasEndAssessmentClicked(): boolean {
+    return this.endAssessmentClicked;
   }
 
   /**
@@ -66,6 +72,12 @@ export class QuestionnairePage {
    */
   async answerAllQuestions() {
     for (let step = 0; step < this.MAX_QUESTIONS; step++) {
+      if (this.endAssessmentClicked) {
+        console.log(
+          "[QuestionnairePage] End Assessment already clicked — stopping questionnaire flow",
+        );
+        return;
+      }
       await this.page.waitForTimeout(200);
 
       if (await this.isOnDrugSelectionPage()) {
@@ -128,6 +140,12 @@ export class QuestionnairePage {
 
       // Nothing to answer — try to progress
       const advanced = await this.progressQuestionnaire();
+      if (this.endAssessmentClicked) {
+        console.log(
+          "[QuestionnairePage] End Assessment clicked during progression — stopping questionnaire flow",
+        );
+        return;
+      }
       if (!advanced) {
         await this.page.waitForTimeout(1000);
         if (await this.isOnDrugSelectionPage()) return;
@@ -1829,7 +1847,7 @@ export class QuestionnairePage {
     const popup = this.page
       .locator(".ant-modal-content")
       .filter({
-        hasText: /NHS 111|GP referal/i,
+        hasText: /NHS111|NHS 111|GP referal/i,
       })
       .first();
 
@@ -1861,10 +1879,43 @@ export class QuestionnairePage {
 
     if (!buttonVisible) {
       console.log(
-        "[QuestionnairePage] Private consultation button not visible",
+        "[QuestionnairePage] Private consultation button not visible, trying End Assessment",
       );
 
-      return false;
+      const endAssessmentButton = popup
+        .locator(
+          [
+            'button:has-text("End Assessment")',
+            'a:has-text("End Assessment")',
+            'button:has-text("End Assesment")',
+            'a:has-text("End Assesment")',
+          ].join(", "),
+        )
+        .first();
+
+      const endAssessmentVisible = await endAssessmentButton
+        .isVisible()
+        .catch(() => false);
+
+      if (!endAssessmentVisible) {
+        console.log(
+          "[QuestionnairePage] End Assessment button not visible in NHS111 popup",
+        );
+        return false;
+      }
+
+      console.log("[QuestionnairePage] Clicking End Assessment button");
+
+      await endAssessmentButton.scrollIntoViewIfNeeded().catch(() => {});
+      await endAssessmentButton
+        .click({ force: true })
+        .catch(async () => {
+          await endAssessmentButton.evaluate((el: HTMLElement) => el.click());
+        });
+
+      this.endAssessmentClicked = true;
+      await this.page.waitForTimeout(1500);
+      return true;
     }
 
     console.log("[QuestionnairePage] Clicking private consultation button");

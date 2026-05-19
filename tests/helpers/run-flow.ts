@@ -516,6 +516,7 @@ async function runConditionFlowImpl(
   const stepVisits: Record<string, number> = {};
   const MAX_STEP_VISITS = 6;
   let flowCompleted = false;
+  let endedByAssessment = false;
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     if (flowCompleted) break;
@@ -628,6 +629,13 @@ async function runConditionFlowImpl(
           console.log("→ [run-flow] questionnaire.answerAllQuestions() start");
           await questionnaire.answerAllQuestions();
           console.log("→ [run-flow] questionnaire.answerAllQuestions() done");
+          if (questionnaire.wasEndAssessmentClicked()) {
+            console.log(
+              "✔ End Assessment clicked from NHS111 popup — stopping test flow as requested",
+            );
+            endedByAssessment = true;
+            flowCompleted = true;
+          }
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           console.log(`✗ [run-flow] questionnaire step failed: ${message}`);
@@ -803,6 +811,13 @@ async function runConditionFlowImpl(
   }
 
   // ── Final assertion ───────────────────────────────────────────────────────
+  if (endedByAssessment) {
+    console.log(
+      "✔ Final assertion skipped: flow intentionally ended via End Assessment",
+    );
+    return;
+  }
+
   const confirmed = await signup.isBookingConfirmed();
   console.log(`✔ Booking confirmed check: ${confirmed}`);
   expect(page.url()).not.toContain("/conditions");
