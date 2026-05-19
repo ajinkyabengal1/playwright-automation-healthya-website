@@ -114,6 +114,9 @@ export class ProductSignupPage {
     email: string;
     password: string;
     confirmPassword: string;
+    confirmPhone?: string;
+    confirmEmail?: string;
+    country?: string;
   }): Promise<boolean> {
     const visible = await this.page
       .locator("text=/enter your contact details/i")
@@ -122,7 +125,40 @@ export class ProductSignupPage {
       .catch(() => false);
     if (!visible) return false;
 
+    if (data.country) {
+      const countrySelects = this.page.locator("select.PhoneInputCountrySelect");
+      const count = await countrySelects.count();
+      for (let i = 0; i < count; i++) {
+        const select = countrySelects.nth(i);
+        await select
+          .evaluate((el: HTMLSelectElement, targetLabel: string) => {
+            const option = Array.from(el.options).find(
+              (o) =>
+                o.text.trim().toLowerCase() === targetLabel.toLowerCase() ||
+                o.label.trim().toLowerCase() === targetLabel.toLowerCase(),
+            );
+            if (!option) return;
+            const nativeSetter = Object.getOwnPropertyDescriptor(
+              window.HTMLSelectElement.prototype,
+              "value",
+            )?.set;
+            if (nativeSetter) nativeSetter.call(el, option.value);
+            else el.value = option.value;
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+          }, data.country)
+          .catch(() => {});
+        await select
+          .selectOption({ label: data.country }, { force: true, timeout: 1000 })
+          .catch(() => {});
+      }
+      await this.page.waitForTimeout(500);
+    }
+
     const normalizedPhone = this.normalizeUkPhoneForInput(data.phone);
+    const normalizedConfirmPhone = data.confirmPhone
+      ? this.normalizeUkPhoneForInput(data.confirmPhone)
+      : normalizedPhone;
 
     const phoneInput = this.page
       .locator('input[placeholder*="Enter your phone number" i], input.PhoneInputInput, input[type="tel"]')
@@ -137,7 +173,9 @@ export class ProductSignupPage {
     }
     if (await confirmPhoneInput.isVisible().catch(() => false)) {
       await confirmPhoneInput.fill("").catch(() => {});
-      await confirmPhoneInput.type(normalizedPhone, { delay: 35 }).catch(() => {});
+      await confirmPhoneInput
+        .type(normalizedConfirmPhone, { delay: 35 })
+        .catch(() => {});
     }
 
     const emailInput = this.page
@@ -159,7 +197,7 @@ export class ProductSignupPage {
     }
     if (await confirmEmailInput.isVisible().catch(() => false)) {
       await confirmEmailInput.fill("").catch(() => {});
-      await confirmEmailInput.fill(data.email).catch(() => {});
+      await confirmEmailInput.fill(data.confirmEmail || data.email).catch(() => {});
     }
     if (await passwordInput.isVisible().catch(() => false)) {
       await passwordInput.fill("").catch(() => {});
@@ -193,6 +231,9 @@ export class ProductSignupPage {
     email: string;
     password: string;
     confirmPassword: string;
+    confirmPhone?: string;
+    confirmEmail?: string;
+    country?: string;
   }): Promise<boolean> {
     if (!(await this.isVisible())) return false;
 
@@ -210,6 +251,9 @@ export class ProductSignupPage {
       email: data.email,
       password: data.password,
       confirmPassword: data.confirmPassword,
+      confirmPhone: data.confirmPhone,
+      confirmEmail: data.confirmEmail,
+      country: data.country,
     });
 
     return handledPersonal || handledContact;

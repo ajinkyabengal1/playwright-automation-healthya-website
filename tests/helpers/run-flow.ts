@@ -601,6 +601,9 @@ async function runConditionFlowImpl(
           email: user.email,
           password: user.password,
           confirmPassword: user.confirmPassword,
+          confirmPhone: user.confirmPhone,
+          confirmEmail: user.confirmEmail,
+          country: user.country,
         });
         break;
       }
@@ -649,6 +652,9 @@ async function runConditionFlowImpl(
               email: user.email,
               password: user.password,
               confirmPassword: user.confirmPassword,
+              confirmPhone: user.confirmPhone,
+              confirmEmail: user.confirmEmail,
+              country: user.country,
             });
           if (handledDynamicCheckoutSignup) break;
         }
@@ -724,7 +730,10 @@ async function runConditionFlowImpl(
             resolvedPhone,
             resolvedConfirmEmail,
             resolvedConfirmPhone,
-            { preferRecoveryModal: useRecoveryValues },
+            {
+              preferRecoveryModal: useRecoveryValues,
+              country: (user as { country?: string }).country,
+            },
           );
           await signup.submitAndBook(
             Boolean(

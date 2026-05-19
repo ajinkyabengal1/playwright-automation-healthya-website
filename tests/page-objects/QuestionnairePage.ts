@@ -1829,7 +1829,7 @@ export class QuestionnairePage {
     const popup = this.page
       .locator(".ant-modal-content")
       .filter({
-        hasText: /NHS 111|GP referral/i,
+        hasText: /NHS 111|GP referal/i,
       })
       .first();
 

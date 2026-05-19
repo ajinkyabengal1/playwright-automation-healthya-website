@@ -192,6 +192,7 @@ function readTestData() {
       confirmEmail: getEnv("TD_CONFIRM_EMAIL") || getEnv("TD_EMAIL"),
       phone: getEnv("TD_PHONE"),
       confirmPhone: getEnv("TD_CONFIRM_PHONE") || getEnv("TD_PHONE"),
+      country: getEnv("TD_COUNTRY"),
       guardianName: getEnv("TD_GUARDIAN_NAME"),
       dobDay: getEnv("TD_DOB_DAY"),
       dobMonth: getEnv("TD_DOB_MONTH"),
@@ -867,6 +868,7 @@ app.get("/api/run-tests", (req, res) => {
       set("TD_CONFIRM_EMAIL", u.confirmEmail);
       set("TD_PHONE", u.phone);
       set("TD_CONFIRM_PHONE", u.confirmPhone);
+      set("TD_COUNTRY", u.country);
       set("TD_POSTCODE", u.postcode);
       set("TD_GUARDIAN_NAME", u.guardianName);
       set("TD_PASSWORD", u.password);

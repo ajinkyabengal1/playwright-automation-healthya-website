@@ -1844,6 +1844,22 @@
                   ><input id="td-phone" class="td-input" data-nhs="phone" type="text" /><span class="nhs-badge">NHS</span>
                 </div>
                 <div class="td-field">
+                  <label>Country</label>
+                  <select id="td-country" class="td-select">
+                    <option value="United Kingdom">United Kingdom</option>
+                    <option value="India">India</option>
+                    <option value="Australia">Australia</option>
+                    <option value="Kuwait">Kuwait</option>
+                    <option value="Malaysia">Malaysia</option>
+                    <option value="Saudi Arabia">Saudi Arabia</option>
+                    <option value="Spain">Spain</option>
+                    <option value="United Arab Emirates">
+                      United Arab Emirates
+                    </option>
+                    <option value="Poland">Poland</option>
+                  </select>
+                </div>
+                <div class="td-field">
                   <label>Postcode *</label
                   ><input id="td-postcode" class="td-input" data-nhs="postcode" type="text" /><span class="nhs-badge">NHS</span>
                 </div>
@@ -2612,6 +2628,7 @@
         set("td-lastName", u.lastName);
         set("td-email", u.email);
         set("td-phone", u.phone);
+        set("td-country", u.country);
         set("td-postcode", u.postcode);
         set("td-gender", u.gender);
         set("td-guardianName", u.guardianName);
@@ -2672,6 +2689,7 @@
             email: val("td-email"),
             guardianName: val("td-guardianName"),
             phone: val("td-phone"),
+            country: val("td-country"),
             password: val("td-password"),
             confirmPassword: val("td-confirmPassword"),
             triggerContactRecovery: recoveryEnabled,

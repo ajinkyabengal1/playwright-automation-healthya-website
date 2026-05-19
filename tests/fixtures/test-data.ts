@@ -27,6 +27,7 @@ export const TEST_USER = {
   guardianName: _e.TD_GUARDIAN_NAME || "Tonny stark",
   phone: _e.TD_PHONE || "447467059973",
   confirmPhone: _e.TD_CONFIRM_PHONE || _e.TD_PHONE || "447467059973",
+  country: _e.TD_COUNTRY || "United Kingdom",
   newPhone: _e.TD_NEW_PHONE || _e.TD_PHONE || "447467059973",
   confirmNewPhone:
     _e.TD_CONFIRM_NEW_PHONE ||
