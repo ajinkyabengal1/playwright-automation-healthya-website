@@ -761,6 +761,45 @@
         margin-top: 2px;
       }
 
+      .rc-label-row {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        min-width: 0;
+      }
+      .rc-tag {
+        flex-shrink: 0;
+        font-size: 9px;
+        font-weight: 700;
+        padding: 1px 5px;
+        border-radius: 3px;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+      }
+      .rc-tag-nhs {
+        background: rgba(0, 94, 184, 0.18);
+        color: #4fa3e8;
+        border: 1px solid rgba(0, 94, 184, 0.35);
+      }
+      .rc-tag-private {
+        background: rgba(124, 106, 247, 0.18);
+        color: #a78cf7;
+        border: 1px solid rgba(124, 106, 247, 0.35);
+      }
+      .rc-copy-url {
+        flex-shrink: 0;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0 2px;
+        font-size: 12px;
+        opacity: 0.45;
+        line-height: 1;
+        color: var(--clr-txt-muted);
+        transition: opacity var(--transition);
+      }
+      .rc-copy-url:hover { opacity: 0.9; }
+
       .rc-dequeue {
         flex-shrink: 0;
         width: 22px;
@@ -1828,20 +1867,20 @@
               </div>
               <div class="td-section-body">
                 <div class="td-field">
-                  <label>First Name *</label
-                  ><input id="td-firstName" class="td-input" data-nhs="firstName" type="text" /><span class="nhs-badge">NHS</span>
+                  <label>First Name *<span class="nhs-badge">NHS</span></label
+                  ><input id="td-firstName" class="td-input" data-nhs="firstName" type="text" />
                 </div>
                 <div class="td-field">
-                  <label>Last Name *</label
-                  ><input id="td-lastName" class="td-input" data-nhs="lastName" type="text" /><span class="nhs-badge">NHS</span>
+                  <label>Last Name *<span class="nhs-badge">NHS</span></label
+                  ><input id="td-lastName" class="td-input" data-nhs="lastName" type="text" />
                 </div>
                 <div class="td-field full">
-                  <label>Email *</label
-                  ><input id="td-email" class="td-input" data-nhs="email" type="text" /><span class="nhs-badge">NHS</span>
+                  <label>Email *<span class="nhs-badge">NHS</span></label
+                  ><input id="td-email" class="td-input" data-nhs="email" type="text" />
                 </div>
                 <div class="td-field">
-                  <label>Phone *</label
-                  ><input id="td-phone" class="td-input" data-nhs="phone" type="text" /><span class="nhs-badge">NHS</span>
+                  <label>Phone *<span class="nhs-badge">NHS</span></label
+                  ><input id="td-phone" class="td-input" data-nhs="phone" type="text" />
                 </div>
                 <div class="td-field">
                   <label>Country</label>
@@ -1860,49 +1899,49 @@
                   </select>
                 </div>
                 <div class="td-field">
-                  <label>Postcode *</label
-                  ><input id="td-postcode" class="td-input" data-nhs="postcode" type="text" /><span class="nhs-badge">NHS</span>
+                  <label>Postcode *<span class="nhs-badge">NHS</span></label
+                  ><input id="td-postcode" class="td-input" data-nhs="postcode" type="text" />
                 </div>
                 <div class="td-field">
-                  <label>Gender</label>
+                  <label>Gender<span class="nhs-badge">NHS</span></label>
                   <select id="td-gender" class="td-select" data-nhs="gender">
                     <option value="male">Male</option>
                     <option value="female">Female</option>
-                  </select><span class="nhs-badge">NHS</span>
+                  </select>
                 </div>
                 <div class="td-field">
                   <label>Guardian Name</label
                   ><input id="td-guardianName" class="td-input" type="text" />
                 </div>
                 <div class="td-field">
-                  <label>DOB Day * (DD)</label
+                  <label>DOB Day * (DD)<span class="nhs-badge">NHS</span></label
                   ><input
                     id="td-dobDay"
                     class="td-input"
                     data-nhs="dobDay"
                     type="text"
                     placeholder="01"
-                  /><span class="nhs-badge">NHS</span>
+                  />
                 </div>
                 <div class="td-field">
-                  <label>DOB Month * (MM)</label
+                  <label>DOB Month * (MM)<span class="nhs-badge">NHS</span></label
                   ><input
                     id="td-dobMonth"
                     class="td-input"
                     data-nhs="dobMonth"
                     type="text"
                     placeholder="01"
-                  /><span class="nhs-badge">NHS</span>
+                  />
                 </div>
                 <div class="td-field">
-                  <label>DOB Year * (YYYY)</label
+                  <label>DOB Year * (YYYY)<span class="nhs-badge">NHS</span></label
                   ><input
                     id="td-dobYear"
                     class="td-input"
                     data-nhs="dobYear"
                     type="text"
                     placeholder="1990"
-                  /><span class="nhs-badge">NHS</span>
+                  />
                 </div>
                 <div class="td-field">
                   <label>Password *</label
@@ -2096,7 +2135,14 @@
       let filterText = "";
       let activeJourneyFilter = "lifestyle"; // tracks TD panel journey type select
       let visibleTestCases = []; // set by renderTree() — used by Run All
-      let queuedLinks = [];
+      let queuedLinks = []; // array of { url, conditionName, tag, loading }
+
+      async function fetchPageMeta(url) {
+        try {
+          const r = await fetch(`/api/page-meta?url=${encodeURIComponent(url)}`);
+          return r.ok ? await r.json() : {};
+        } catch (_) { return {}; }
+      }
 
       // Multi-run state
       const runs = new Map(); // runId → { label, status, logs[], artifacts, startTime, es, elapsedTimer, videoUrls[] }
@@ -2187,16 +2233,23 @@
 
       // ── Multi-Link Queue ───────────────────────────────────────────────────────
       function renderLinkQueue() {
+        btnRunLinkFlow.style.display = queuedLinks.length > 0 ? "none" : "";
         if (queuedLinks.length === 0) {
           linkQueueWrap.style.display = "none";
           return;
         }
         linkQueueList.innerHTML = "";
-        queuedLinks.forEach((link, idx) => {
+        queuedLinks.forEach((entry, idx) => {
           const div = document.createElement("div");
           div.style.cssText =
-            "font-size: 10px; color: var(--clr-txt-muted); padding: 5px 0; border-bottom: 1px solid var(--clr-border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
-          div.textContent = `${idx + 1}. ${link}`;
+            "display:flex;align-items:center;gap:5px;font-size:10px;color:var(--clr-txt-muted);padding:5px 0;border-bottom:1px solid var(--clr-border);overflow:hidden;";
+          const label = entry.loading
+            ? `⏳ ${entry.url.split("/").pop().substring(0, 30)}...`
+            : entry.conditionName || entry.url.split("/").pop().substring(0, 30);
+          const tagHtml = entry.tag
+            ? `<span style="flex-shrink:0;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;background:${entry.tag === "NHS" ? "rgba(0,94,184,.18)" : "rgba(124,106,247,.18)"};color:${entry.tag === "NHS" ? "#4fa3e8" : "#a78cf7"};border:1px solid ${entry.tag === "NHS" ? "rgba(0,94,184,.35)" : "rgba(124,106,247,.35)"};">${entry.tag}</span>`
+            : "";
+          div.innerHTML = `<span style="flex-shrink:0;color:var(--clr-txt-dim)">${idx + 1}.</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${entry.url}">${label}</span>${tagHtml}`;
           linkQueueList.appendChild(div);
         });
         linkQueueHdr.textContent = `Pending Links (${queuedLinks.length})`;
@@ -2208,10 +2261,17 @@
         if (!link) return;
         try {
           new URL(link);
-          queuedLinks.push(link);
+          const entry = { url: link, conditionName: null, tag: null, loading: true };
+          queuedLinks.push(entry);
           customLinkInput.value = "";
           updateClearButton();
           renderLinkQueue();
+          fetchPageMeta(link).then((meta) => {
+            entry.conditionName = meta.conditionName || null;
+            entry.tag = meta.tag || null;
+            entry.loading = false;
+            renderLinkQueue();
+          });
         } catch (_) {
           alert("Please paste a valid URL first.");
         }
@@ -2246,9 +2306,16 @@
           if (data.links && data.links.length > 0) {
             let addedCount = 0;
             data.links.forEach((link) => {
-              if (!queuedLinks.includes(link)) {
-                queuedLinks.push(link);
+              if (!queuedLinks.some(e => e.url === link)) {
+                const entry = { url: link, conditionName: null, tag: null, loading: true };
+                queuedLinks.push(entry);
                 addedCount++;
+                fetchPageMeta(link).then((meta) => {
+                  entry.conditionName = meta.conditionName || null;
+                  entry.tag = meta.tag || null;
+                  entry.loading = false;
+                  renderLinkQueue();
+                });
               }
             });
             renderLinkQueue();
@@ -2286,12 +2353,18 @@
         const tdOverrides = btoa(JSON.stringify(tdCollectForm()));
 
         let firstRunId = null;
-        for (const link of linksToRun) {
+        for (const entry of linksToRun) {
+          const url = entry.url;
+          const conditionName = entry.conditionName;
+          const tag = entry.tag;
           const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-          const runLabel = `Batch: ${link.split("/").pop().substring(0, 10)}...`;
+          const runLabel = conditionName || `Batch: ${url.split("/").pop().substring(0, 10)}...`;
 
           runs.set(runId, {
             label: runLabel,
+            conditionName,
+            tag,
+            rawUrl: url,
             status: "queued",
             logs: [],
             artifacts: null,
@@ -2308,7 +2381,7 @@
             runId,
             file: "tests/e2e/pasted-link-flow.spec.ts",
             label: runLabel,
-            rawLink: link,
+            rawLink: url,
             tdOverrides: tdOverrides,
           });
 
@@ -2782,9 +2855,9 @@
 
       // ── NHS User Toggle ────────────────────────────────────────────────────────
       const NHS_USER_DATA = {
-        firstName: "", lastName: "", email: "", phone: "",
-        postcode: "HD59LT", gender: "female",
-        dobDay: "", dobMonth: "", dobYear: "",
+        firstName: "Lloyd", lastName: "Peeney", email: "lloyd.p2@yopmail.com", phone: "447467059973",
+        postcode: "HD59LT", gender: "male",
+        dobDay: "15", dobMonth: "04", dobYear: "1962",
       };
       const nhsUserChk = document.getElementById("td-nhsUser");
       const userInfoSection = document.getElementById("td-userInfoSection");
@@ -2961,11 +3034,12 @@
         resetJourneyFlowUI();
 
         const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-        const runLabel = "Healthya Link Flow";
         const tdOverrides = btoa(JSON.stringify(tdCollectForm()));
-
-        runs.set(runId, {
-          label: runLabel,
+        const runEntry = {
+          label: "Healthya Link Flow",
+          conditionName: null,
+          tag: null,
+          rawUrl: link,
           status: "queued",
           logs: [],
           artifacts: null,
@@ -2976,12 +3050,13 @@
           counts: null,
           queueKey: null,
           journey: "lifestyle",
-        });
+        };
+        runs.set(runId, runEntry);
 
         runQueue.push({
           runId,
           file: "tests/e2e/pasted-link-flow.spec.ts",
-          label: runLabel,
+          label: runEntry.label,
           rawLink: link,
           tdOverrides,
         });
@@ -2991,6 +3066,28 @@
         updateQueuePositions();
         updateGlobalStatus();
         processQueue();
+
+        // Fetch metadata in background and update the card
+        fetchPageMeta(link).then((meta) => {
+          if (meta.conditionName) {
+            runEntry.conditionName = meta.conditionName;
+            runEntry.tag = meta.tag || null;
+            runEntry.label = meta.conditionName;
+            const card = runsList.querySelector(`.run-card[data-runid="${runId}"]`);
+            if (card) {
+              const lbl = card.querySelector(".rc-label");
+              if (lbl) lbl.textContent = meta.conditionName;
+              const existingTag = card.querySelector(".rc-tag");
+              if (existingTag) existingTag.remove();
+              if (meta.tag) {
+                const t = document.createElement("span");
+                t.className = `rc-tag rc-tag-${meta.tag.toLowerCase()}`;
+                t.textContent = meta.tag;
+                lbl.after(t);
+              }
+            }
+          }
+        });
       });
 
       customLinkInput.addEventListener("keydown", async (e) => {
@@ -3203,10 +3300,20 @@
         card.className =
           "run-card" + (selectedRunId === runId ? " selected" : "");
         card.dataset.runid = runId;
+        const displayName = run.conditionName || run.label;
+        const tagHtml = run.tag
+          ? `<span class="rc-tag rc-tag-${run.tag.toLowerCase()}">${run.tag}</span>`
+          : "";
+        const copyHtml = run.rawUrl
+          ? `<button class="rc-copy-url" title="Copy URL">🔗</button>`
+          : "";
         card.innerHTML = `
         <span class="rc-dot ${run.status}"></span>
         <div class="rc-info">
-          <div class="rc-label" title="${run.label}">${run.label}</div>
+          <div class="rc-label-row">
+            <span class="rc-label" title="${run.rawUrl || run.label}">${displayName}</span>
+            ${tagHtml}${copyHtml}
+          </div>
           ${
             isQueued
               ? `<div class="rc-queue-pos">⏳ in queue</div>`
@@ -3219,6 +3326,12 @@
             : `<button class="rc-stop" title="Stop this run">■</button>`
         }
       `;
+        if (run.rawUrl) {
+          card.querySelector(".rc-copy-url")?.addEventListener("click", (e) => {
+            e.stopPropagation();
+            navigator.clipboard.writeText(run.rawUrl).catch(() => {});
+          });
+        }
         if (isQueued) {
           card.querySelector(".rc-dequeue").addEventListener("click", (e) => {
             e.stopPropagation();

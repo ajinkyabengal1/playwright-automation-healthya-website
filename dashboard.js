@@ -788,6 +788,46 @@ app.get("/api/analyze-healthya-link", async (req, res) => {
   }
 });
 
+app.get("/api/page-meta", async (req, res) => {
+  const url = req.query.url;
+  if (!url) return res.status(400).json({ error: "url required" });
+  const { chromium } = require("@playwright/test");
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 800 },
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  });
+  const page = await context.newPage();
+  try {
+    await page
+      .goto(url, { waitUntil: "domcontentloaded", timeout: 20_000 })
+      .catch(() => {});
+    await page
+      .waitForSelector("#patient_header h5", { timeout: 8_000 })
+      .catch(() => {});
+    const result = await page.evaluate(() => {
+      const h5 = document.querySelector("#patient_header h5");
+      if (!h5) return { conditionName: null, tag: null };
+      const conditionName = h5.textContent?.trim() || null;
+      const next = h5.nextElementSibling;
+      let tag = null;
+      if (next) {
+        const t = next.tagName.toLowerCase();
+        if (t === "img") tag = "NHS";
+        else if (t === "svg") tag = "PRIVATE";
+      }
+      return { conditionName, tag };
+    });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ conditionName: null, tag: null, error: e.message });
+  } finally {
+    await browser.close().catch(() => {});
+  }
+});
+
+
 // SSE stream for running tests
 app.get("/api/run-tests", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
