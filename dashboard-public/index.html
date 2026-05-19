@@ -1005,31 +1005,26 @@
 
       /* Artifacts panel */
       #artifacts-panel {
-        display: none;
-        flex: 1;
-        min-height: 0;
-        overflow-y: auto;
-        padding: 20px;
-        background: var(--clr-main);
-        transition: background var(--transition);
+        display: none; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto;
+        padding: 16px 20px; background: var(--clr-main);
+        transition: background var(--transition); gap: 0;
       }
       #artifacts-panel h3 {
-        margin: 0 0 16px;
-        font-size: 13px;
-        font-weight: 700;
-        color: var(--clr-txt);
-        letter-spacing: -0.01em;
+        margin: 0 0 14px; font-size: 11px; font-weight: 700;
+        color: var(--clr-txt-muted); letter-spacing: .07em; text-transform: uppercase;
       }
       .artifact-section {
-        margin-bottom: 24px;
+        margin-bottom: 20px;
       }
-      .artifact-section h4 {
-        font-size: 10px;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-        color: var(--clr-txt-muted);
-        margin: 0 0 10px;
-        font-weight: 700;
+      .artifact-section-header {
+        display: flex; align-items: center; gap: 8px;
+        margin: 0 0 8px; padding-bottom: 6px;
+        border-bottom: 1px solid var(--clr-border);
+      }
+      .artifact-section-header .asec-icon { font-size: 13px; }
+      .artifact-section-header .asec-label {
+        font-size: 10px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .07em; color: var(--clr-txt-muted);
       }
       .artifact-list {
         display: flex;
@@ -1037,10 +1032,7 @@
         gap: 6px;
       }
       .artifact-item {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 10px 14px;
+        display: flex; align-items: center; gap: 10px; padding: 9px 12px;
         border: 1px solid var(--clr-border);
         border-radius: var(--radius-sm);
         background: var(--clr-surface);
@@ -1054,25 +1046,71 @@
         background: var(--clr-hover);
         transform: translateX(2px);
       }
-      .artifact-item .icon {
-        font-size: 15px;
-        flex-shrink: 0;
-      }
-      .artifact-item .name {
-        flex: 1;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
+      .artifact-item .icon { font-size: 14px; flex-shrink: 0; }
+      .artifact-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+      .artifact-item .ext-link { font-size: 11px; color: var(--clr-accent); flex-shrink: 0; }
       .artifact-empty {
-        color: var(--clr-txt-muted);
-        font-size: 12px;
-        padding: 8px 0;
+        color: var(--clr-txt-muted); font-size: 12px; padding: 10px 12px;
+        border: 1px dashed var(--clr-border); border-radius: var(--radius-sm);
+        text-align: center;
       }
       .artifact-shot {
         width: 100%;
         border-radius: 6px;
         border: 1px solid var(--clr-border);
+      }
+
+      /* Results browser */
+      #results-panel {
+        display: none; flex-direction: column; flex: 1; min-height: 0;
+        background: var(--clr-main); transition: background var(--transition);
+      }
+      #results-toolbar {
+        display: flex; align-items: center; gap: 8px;
+        padding: 10px 16px; border-bottom: 1px solid var(--clr-border);
+        background: var(--clr-surface); flex-shrink: 0;
+      }
+      #results-toolbar button { flex-shrink: 0; }
+      #results-search {
+        flex: 1; padding: 5px 10px; border: 1px solid var(--clr-border);
+        border-radius: var(--radius-sm); background: var(--clr-main);
+        color: var(--clr-txt); font-size: 12px; outline: none;
+      }
+      #results-list {
+        flex: 1; min-height: 0; overflow-y: auto; padding: 10px 14px;
+        display: flex; flex-direction: column; gap: 6px;
+      }
+      .res-item {
+        border: 1px solid var(--clr-border); border-radius: var(--radius-sm);
+        background: var(--clr-surface); overflow: hidden;
+      }
+      .res-item.selected { border-color: var(--clr-accent); }
+      .res-header {
+        display: flex; align-items: center; gap: 8px;
+        padding: 8px 12px; cursor: pointer; user-select: none;
+        transition: background var(--transition);
+      }
+      .res-header:hover { background: var(--clr-hover); }
+      .res-check { flex-shrink: 0; }
+      .res-name { flex: 1; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .res-size { font-size: 10px; color: var(--clr-txt-muted); flex-shrink: 0; }
+      .res-time { font-size: 10px; color: var(--clr-txt-muted); flex-shrink: 0; }
+      .res-expand { font-size: 10px; color: var(--clr-txt-muted); flex-shrink: 0; }
+      .res-files { display: none; padding: 0 12px 10px 32px; display: flex; flex-direction: column; gap: 4px; }
+      .res-files.collapsed { display: none; }
+      .res-file {
+        display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+        border: 1px solid var(--clr-border); border-radius: var(--radius-sm);
+        text-decoration: none; color: var(--clr-txt);
+        font-size: 11px; background: var(--clr-main);
+        transition: all var(--transition);
+      }
+      .res-file:hover { border-color: var(--clr-accent); background: var(--clr-hover); }
+      .res-file .rf-icon { flex-shrink: 0; }
+      .res-file .rf-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .res-file .rf-size { font-size: 10px; color: var(--clr-txt-muted); flex-shrink: 0; }
+      .res-empty {
+        color: var(--clr-txt-muted); font-size: 12px; padding: 20px; text-align: center;
       }
 
       /* Loading spinner */
@@ -1230,6 +1268,18 @@
       .td-select option {
         background: var(--clr-surface);
       }
+
+      /* NHS User toggle */
+      .nhs-toggle-wrap { display:flex; align-items:center; gap:5px; margin-left:auto; padding-right:2px; }
+      .nhs-toggle-wrap input[type=checkbox] { display:none; }
+      .nhs-slider { width:30px; height:16px; background:var(--clr-border-drk); border-radius:8px; position:relative; cursor:pointer; transition:background 0.2s; flex-shrink:0; }
+      .nhs-slider::after { content:""; position:absolute; top:2px; left:2px; width:12px; height:12px; border-radius:50%; background:#fff; transition:left 0.2s; }
+      #td-nhsUser:checked ~ .nhs-slider { background:#005eb8; }
+      #td-nhsUser:checked ~ .nhs-slider::after { left:16px; }
+      .nhs-toggle-text { font-size:10px; font-weight:700; color:#005eb8; letter-spacing:.05em; }
+      .nhs-badge { display:none; margin-left:4px; font-size:9px; font-weight:800; color:#fff; background:#005eb8; border-radius:3px; padding:1px 4px; letter-spacing:.05em; }
+      .nhs-mode .nhs-badge { display:inline; }
+      .nhs-mode .td-input[data-nhs], .nhs-mode .td-select[data-nhs] { border-color:#005eb8; background:rgba(0,94,184,0.07); }
 
       .td-check-row {
         grid-column: 1 / -1;
@@ -1711,6 +1761,7 @@
         <div id="tab-bar">
           <div class="tab active" data-tab="output">Output</div>
           <div class="tab" data-tab="artifacts">Artifacts</div>
+          <div class="tab" data-tab="results">Results</div>
           <div class="tab" data-tab="testdata">⚙ Test Data</div>
         </div>
 
@@ -1727,24 +1778,36 @@
         <div id="artifacts-panel">
           <h3>Run Artifacts</h3>
           <div class="artifact-section">
-            <h4>📹 Videos</h4>
+            <div class="artifact-section-header"><span class="asec-icon">📹</span><span class="asec-label">Videos</span></div>
             <div class="artifact-list" id="artifact-videos">
               <div class="artifact-empty">No videos yet. Run a test first.</div>
             </div>
           </div>
           <div class="artifact-section">
-            <h4>🔍 Traces</h4>
+            <div class="artifact-section-header"><span class="asec-icon">🔍</span><span class="asec-label">Traces</span></div>
             <div class="artifact-list" id="artifact-traces">
               <div class="artifact-empty">No traces yet. Run a test first.</div>
             </div>
           </div>
           <div class="artifact-section">
-            <h4>🖼 Screenshots</h4>
+            <div class="artifact-section-header"><span class="asec-icon">🖼</span><span class="asec-label">Screenshots</span></div>
             <div class="artifact-list" id="artifact-screenshots">
               <div class="artifact-empty">
                 No screenshots yet. Run a test first.
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Results browser panel -->
+        <div id="results-panel">
+          <div id="results-toolbar">
+            <input id="results-search" type="text" placeholder="Filter results…" />
+            <button class="btn btn-sm btn-danger" id="results-delete-btn" disabled>🗑 Delete</button>
+            <button class="btn btn-sm btn-secondary" id="results-refresh-btn">↺ Refresh</button>
+          </div>
+          <div id="results-list">
+            <div class="res-empty">Loading…</div>
           </div>
         </div>
 
@@ -1755,35 +1818,41 @@
           </div>
           <div class="td-body">
             <!-- User Info -->
-            <div class="td-section collapsed">
-              <div class="td-section-header">👤 User Info</div>
+            <div class="td-section collapsed" id="td-userInfoSection">
+              <div class="td-section-header">👤 User Info
+                <label class="nhs-toggle-wrap" title="Fill NHS user data">
+                  <input type="checkbox" id="td-nhsUser" />
+                  <span class="nhs-slider"></span>
+                  <span class="nhs-toggle-text">NHS</span>
+                </label>
+              </div>
               <div class="td-section-body">
                 <div class="td-field">
                   <label>First Name *</label
-                  ><input id="td-firstName" class="td-input" type="text" />
+                  ><input id="td-firstName" class="td-input" data-nhs="firstName" type="text" /><span class="nhs-badge">NHS</span>
                 </div>
                 <div class="td-field">
                   <label>Last Name *</label
-                  ><input id="td-lastName" class="td-input" type="text" />
+                  ><input id="td-lastName" class="td-input" data-nhs="lastName" type="text" /><span class="nhs-badge">NHS</span>
                 </div>
                 <div class="td-field full">
                   <label>Email *</label
-                  ><input id="td-email" class="td-input" type="text" />
+                  ><input id="td-email" class="td-input" data-nhs="email" type="text" /><span class="nhs-badge">NHS</span>
                 </div>
                 <div class="td-field">
                   <label>Phone *</label
-                  ><input id="td-phone" class="td-input" type="text" />
+                  ><input id="td-phone" class="td-input" data-nhs="phone" type="text" /><span class="nhs-badge">NHS</span>
                 </div>
                 <div class="td-field">
                   <label>Postcode *</label
-                  ><input id="td-postcode" class="td-input" type="text" />
+                  ><input id="td-postcode" class="td-input" data-nhs="postcode" type="text" /><span class="nhs-badge">NHS</span>
                 </div>
                 <div class="td-field">
                   <label>Gender</label>
-                  <select id="td-gender" class="td-select">
+                  <select id="td-gender" class="td-select" data-nhs="gender">
                     <option value="male">Male</option>
                     <option value="female">Female</option>
-                  </select>
+                  </select><span class="nhs-badge">NHS</span>
                 </div>
                 <div class="td-field">
                   <label>Guardian Name</label
@@ -1794,27 +1863,30 @@
                   ><input
                     id="td-dobDay"
                     class="td-input"
+                    data-nhs="dobDay"
                     type="text"
                     placeholder="01"
-                  />
+                  /><span class="nhs-badge">NHS</span>
                 </div>
                 <div class="td-field">
                   <label>DOB Month * (MM)</label
                   ><input
                     id="td-dobMonth"
                     class="td-input"
+                    data-nhs="dobMonth"
                     type="text"
                     placeholder="01"
-                  />
+                  /><span class="nhs-badge">NHS</span>
                 </div>
                 <div class="td-field">
                   <label>DOB Year * (YYYY)</label
                   ><input
                     id="td-dobYear"
                     class="td-input"
+                    data-nhs="dobYear"
                     type="text"
                     placeholder="1990"
-                  />
+                  /><span class="nhs-badge">NHS</span>
                 </div>
                 <div class="td-field">
                   <label>Password *</label
@@ -1882,6 +1954,21 @@
                       placeholder="Confirm your new email address"
                     />
                   </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Appointment -->
+            <div class="td-section collapsed">
+              <div class="td-section-header">📅 Appointment</div>
+              <div class="td-section-body">
+                <div class="td-field">
+                  <label>Appointment Type</label>
+                  <select id="td-appointmentType" class="td-select">
+                    <option value="Video">Video</option>
+                    <option value="Face to Face">Face to Face</option>
+                    <option value="Phone call">Phone call</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -2074,8 +2161,11 @@
             which === "output" ? "flex" : "none";
           document.getElementById("artifacts-panel").style.display =
             which === "artifacts" ? "flex" : "none";
+          document.getElementById("results-panel").style.display =
+            which === "results" ? "flex" : "none";
           document.getElementById("testdata-panel").style.display =
             which === "testdata" ? "flex" : "none";
+          if (which === "results") loadResults();
         });
       });
 
@@ -2179,6 +2269,7 @@
 
         const tdOverrides = btoa(JSON.stringify(tdCollectForm()));
 
+        let firstRunId = null;
         for (const link of linksToRun) {
           const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
           const runLabel = `Batch: ${link.split("/").pop().substring(0, 10)}...`;
@@ -2206,10 +2297,13 @@
           });
 
           addRunCard(runId);
+          if (!firstRunId) firstRunId = runId;
         }
         updateQueuePositions();
         updateGlobalStatus();
         processQueue();
+        // Focus the bottom-most card (first added, since cards are prepended)
+        if (firstRunId) selectRun(firstRunId);
       });
 
       // ── Test Data Panel ────────────────────────────────────────────────────────
@@ -2502,6 +2596,7 @@
         const u = data.user || {};
         const p = data.payment || {};
         const s = data.shipping || {};
+        const a = data.appointment || {};
 
         const set = (id, val) => {
           const el = document.getElementById(id);
@@ -2548,6 +2643,7 @@
         set("td-postalCode", s.postalCode);
         set("td-addressAction", s.addressAction);
         set("td-paymentMethod", s.paymentMethod);
+        set("td-appointmentType", a.appointmentType);
 
         const recoveryCheck = document.getElementById(
           "td-triggerContactRecovery",
@@ -2606,6 +2702,9 @@
             addressAction: val("td-addressAction"),
             paymentMethod: val("td-paymentMethod"),
           },
+          appointment: {
+            appointmentType: val("td-appointmentType"),
+          },
         };
       }
 
@@ -2657,10 +2756,133 @@
           el.addEventListener("input", () => {});
         });
       document.querySelectorAll(".td-section-header").forEach((hdr) => {
-        hdr.addEventListener("click", () =>
-          hdr.closest(".td-section").classList.toggle("collapsed"),
-        );
+        hdr.addEventListener("click", (e) => {
+          if (e.target.closest(".nhs-toggle-wrap")) return;
+          hdr.closest(".td-section").classList.toggle("collapsed");
+        });
       });
+
+      // ── NHS User Toggle ────────────────────────────────────────────────────────
+      const NHS_USER_DATA = {
+        firstName: "", lastName: "", email: "", phone: "",
+        postcode: "HD59LT", gender: "female",
+        dobDay: "", dobMonth: "", dobYear: "",
+      };
+      const nhsUserChk = document.getElementById("td-nhsUser");
+      const userInfoSection = document.getElementById("td-userInfoSection");
+      if (nhsUserChk && userInfoSection) {
+        nhsUserChk.addEventListener("change", () => {
+          const on = nhsUserChk.checked;
+          userInfoSection.classList.toggle("nhs-mode", on);
+          if (on) {
+            const set = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+            set("td-firstName",  NHS_USER_DATA.firstName);
+            set("td-lastName",   NHS_USER_DATA.lastName);
+            set("td-email",      NHS_USER_DATA.email);
+            set("td-phone",      NHS_USER_DATA.phone);
+            set("td-postcode",   NHS_USER_DATA.postcode);
+            set("td-gender",     NHS_USER_DATA.gender);
+            set("td-dobDay",     NHS_USER_DATA.dobDay);
+            set("td-dobMonth",   NHS_USER_DATA.dobMonth);
+            set("td-dobYear",    NHS_USER_DATA.dobYear);
+          }
+        });
+      }
+
+      // ── Results browser ────────────────────────────────────────────────────────
+      let resultsData = [];
+      let resultsSelected = new Set();
+
+      function fmtBytes(b) {
+        if (b < 1024) return b + " B";
+        if (b < 1024 * 1024) return (b / 1024).toFixed(1) + " KB";
+        return (b / (1024 * 1024)).toFixed(1) + " MB";
+      }
+      function fmtTime(ms) {
+        const d = new Date(ms);
+        return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      }
+
+      async function loadResults() {
+        const list = document.getElementById("results-list");
+        list.innerHTML = '<div class="res-empty">Loading…</div>';
+        try {
+          const r = await fetch("/api/results");
+          resultsData = await r.json();
+          resultsSelected.clear();
+          syncResultsSelection();
+          renderResults(document.getElementById("results-search").value || "");
+        } catch (e) {
+          list.innerHTML = `<div class="res-empty">Error: ${e.message}</div>`;
+        }
+      }
+
+      function renderResults(filter) {
+        const list = document.getElementById("results-list");
+        const items = resultsData.filter(r => !filter || r.name.toLowerCase().includes(filter.toLowerCase()));
+        if (items.length === 0) {
+          list.innerHTML = '<div class="res-empty">No results found.</div>';
+          return;
+        }
+        list.innerHTML = items.map(r => {
+          const sel = resultsSelected.has(r.name);
+          const fileRows = r.files.map(f => {
+            const icon = f.type === "video" ? "🎬" : f.type === "trace" ? "🔍" : "📄";
+            return `<a class="res-file" href="${f.url}" target="_blank"><span class="rf-icon">${icon}</span><span class="rf-name">${f.name}</span><span class="rf-size">${fmtBytes(f.size)}</span></a>`;
+          }).join("");
+          return `<div class="res-item${sel ? " selected" : ""}" data-name="${r.name}">
+            <div class="res-header" onclick="toggleResItem(event,'${r.name}')">
+              <input type="checkbox" class="res-check" ${sel ? "checked" : ""} onclick="event.stopPropagation();toggleResCheck('${r.name}',this.checked)" />
+              <span class="res-name">${r.name}</span>
+              <span class="res-size">${fmtBytes(r.totalSize)}</span>
+              <span class="res-time">${fmtTime(r.mtime)}</span>
+              <span class="res-expand">▾</span>
+            </div>
+            <div class="res-files collapsed" id="res-files-${r.name}">${fileRows || '<span style="font-size:11px;color:var(--clr-txt-muted)">No video/trace files</span>'}</div>
+          </div>`;
+        }).join("");
+      }
+
+      function toggleResItem(e, name) {
+        if (e.target.type === "checkbox") return;
+        const el = document.getElementById("res-files-" + name);
+        if (el) el.classList.toggle("collapsed");
+      }
+
+      function toggleResCheck(name, checked) {
+        if (checked) resultsSelected.add(name);
+        else resultsSelected.delete(name);
+        syncResultsSelection();
+        const item = document.querySelector(`.res-item[data-name="${name}"]`);
+        if (item) item.classList.toggle("selected", checked);
+      }
+
+      function syncResultsSelection() {
+        const btn = document.getElementById("results-delete-btn");
+        if (btn) btn.disabled = resultsSelected.size === 0;
+      }
+
+      const resultsSearchEl = document.getElementById("results-search");
+      if (resultsSearchEl) {
+        resultsSearchEl.addEventListener("input", () => renderResults(resultsSearchEl.value));
+      }
+      const resultsRefreshBtn = document.getElementById("results-refresh-btn");
+      if (resultsRefreshBtn) resultsRefreshBtn.addEventListener("click", loadResults);
+
+      const resultsDeleteBtn = document.getElementById("results-delete-btn");
+      if (resultsDeleteBtn) {
+        resultsDeleteBtn.addEventListener("click", async () => {
+          if (!resultsSelected.size) return;
+          const names = [...resultsSelected];
+          if (!confirm(`Delete ${names.length} result folder(s)?`)) return;
+          await fetch("/api/results", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ names }),
+          });
+          await loadResults();
+        });
+      }
 
       // ── Status helpers ─────────────────────────────────────────────────────────
       function setStatus(state, text) {
@@ -2711,17 +2933,46 @@
           alert("Select helathya first.");
           return;
         }
-        try {
-          setStatus("running", "Executing link pipeline...");
-          await runLinkPipeline();
-          appendLog("Run Playwright automation...", "log-start");
-          await queueRun({
-            label: "Healthya Link Flow",
-            journey: (healthyaAnalysis?.suggestedJourneys || [])[0],
-          });
-        } catch (e) {
-          setStatus("idle", `Pipeline failed: ${e.message}`);
+        const link = getValidCustomLink();
+        if (!link) {
+          alert("Paste a valid API link first.");
+          customLinkInput.focus();
+          return;
         }
+        clearLog();
+        resetJourneyFlowUI();
+
+        const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const runLabel = "Healthya Link Flow";
+        const tdOverrides = btoa(JSON.stringify(tdCollectForm()));
+
+        runs.set(runId, {
+          label: runLabel,
+          status: "queued",
+          logs: [],
+          artifacts: null,
+          videoUrls: [],
+          startTime: null,
+          es: null,
+          elapsedTimer: null,
+          counts: null,
+          queueKey: null,
+          journey: "lifestyle",
+        });
+
+        runQueue.push({
+          runId,
+          file: "tests/e2e/pasted-link-flow.spec.ts",
+          label: runLabel,
+          rawLink: link,
+          tdOverrides,
+        });
+
+        addRunCard(runId);
+        selectRun(runId);
+        updateQueuePositions();
+        updateGlobalStatus();
+        processQueue();
       });
 
       customLinkInput.addEventListener("keydown", async (e) => {

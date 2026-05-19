@@ -217,8 +217,10 @@ function readTestData() {
       securityCode: getEnv("TD_CARD_CVV"),
     },
     condition: { journeyType },
+    appointment: {
+      appointmentType: getEnv("TD_APPOINTMENT_TYPE") || "Video",
+    },
     booking: {
-      appointmentType: get("appointmentType"),
       useNextAvailableSlot: getBool("useNextAvailableSlot"),
       preferredMonth: get("preferredMonth"),
       preferredDate: get("preferredDate"),
@@ -851,9 +853,10 @@ app.get("/api/run-tests", (req, res) => {
       const td = JSON.parse(
         Buffer.from(tdOverridesB64, "base64").toString("utf8"),
       );
-      const u = td.user || {};
-      const p = td.payment || {};
+      const u  = td.user     || {};
+      const p  = td.payment  || {};
       const sh = td.shipping || {};
+      const a  = td.appointment || {};
       const set = (key, val) => {
         if (val != null && String(val).trim() !== "") tdEnv[key] = String(val);
       };
@@ -883,6 +886,7 @@ app.get("/api/run-tests", (req, res) => {
       set("TD_SHIP_POSTCODE", sh.postalCode);
       set("TD_SHIP_ADDRESS_ACTION", sh.addressAction);
       set("TD_PAYMENT_METHOD", sh.paymentMethod);
+      set("TD_APPOINTMENT_TYPE",    a.appointmentType);
       set("TD_TRIGGER_CONTACT_RECOVERY", String(u.triggerContactRecovery));
       set("TD_NEW_PHONE", u.newPhone);
       set("TD_CONFIRM_NEW_PHONE", u.confirmNewPhone);
@@ -1070,6 +1074,98 @@ app.get("/api/last-result", (req, res) => {
   } else {
     res.json(null);
   }
+});
+
+// ── Results browser ──────────────────────────────────────────────────────────
+
+function dirSizeBytes(dirPath) {
+  let total = 0;
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    for (const e of entries) {
+      const full = path.join(dirPath, e.name);
+      if (e.isDirectory()) {
+        total += dirSizeBytes(full);
+      } else {
+        try { total += fs.statSync(full).size; } catch (_) {}
+      }
+    }
+  } catch (_) {}
+  return total;
+}
+
+function collectResultFiles(dirPath) {
+  const files = [];
+  function scan(d) {
+    let entries;
+    try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch (_) { return; }
+    for (const e of entries) {
+      const full = path.join(d, e.name);
+      if (e.isDirectory()) {
+        scan(full);
+      } else if (e.isFile()) {
+        if (e.name.endsWith(".webm") || e.name === "trace.zip") {
+          try {
+            const stat = fs.statSync(full);
+            const url = "/" + path.relative(__dirname, full).replace(/\\/g, "/");
+            files.push({ name: e.name, url, size: stat.size, type: e.name.endsWith(".webm") ? "video" : "trace" });
+          } catch (_) {}
+        }
+      }
+    }
+  }
+  scan(dirPath);
+  return files;
+}
+
+app.get("/api/results", (_req, res) => {
+  const dir = path.join(__dirname, "test-results");
+  if (!fs.existsSync(dir)) return res.json([]);
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const results = [];
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      const full = path.join(dir, e.name);
+      let mtime = 0;
+      try { mtime = fs.statSync(full).mtimeMs; } catch (_) {}
+      const files = collectResultFiles(full);
+      const totalSize = dirSizeBytes(full);
+      results.push({ name: e.name, path: full, mtime, totalSize, files });
+    }
+    results.sort((a, b) => b.mtime - a.mtime);
+    res.json(results);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/results", (req, res) => {
+  const { names } = req.body || {};
+  if (!Array.isArray(names) || names.length === 0) {
+    return res.status(400).json({ error: "names array required" });
+  }
+  const dir = path.join(__dirname, "test-results");
+  const deleted = [];
+  const errors = [];
+  for (const name of names) {
+    if (name.includes("..") || name.includes("/") || name.includes("\\")) {
+      errors.push({ name, error: "invalid name" });
+      continue;
+    }
+    const target = path.join(dir, name);
+    if (!target.startsWith(dir + path.sep)) {
+      errors.push({ name, error: "invalid path" });
+      continue;
+    }
+    try {
+      fs.rmSync(target, { recursive: true, force: true });
+      deleted.push(name);
+    } catch (e) {
+      errors.push({ name, error: e.message });
+    }
+  }
+  res.json({ deleted, errors });
 });
 
 // ── Serve dashboard ───────────────────────────────────────────────────────────

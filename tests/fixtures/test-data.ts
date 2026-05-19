@@ -5,6 +5,7 @@ const _dobDay = _e.TD_DOB_DAY || "01";
 const _dobMonth = _e.TD_DOB_MONTH || "01";
 const _dobYear = _e.TD_DOB_YEAR || "1990";
 const _gender = (_e.TD_GENDER || "male") as "male" | "female";
+const _appointmentType = (_e.TD_APPOINTMENT_TYPE || "Video") as AppointmentType;
 
 export const TEST_USER = {
   gender: _gender,
@@ -140,7 +141,7 @@ export interface BookingPreferences {
 }
 
 export const BOOKING_PREFERENCES: BookingPreferences = {
-  appointmentType: "Video",
+  appointmentType: _appointmentType,
 
   useNextAvailableSlot: true,
 

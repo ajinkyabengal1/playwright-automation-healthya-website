@@ -1,5 +1,5 @@
 import { test } from "@playwright/test";
-import { TEST_USER } from "../fixtures/test-data";
+import { TEST_USER, BOOKING_PREFERENCES } from "../fixtures/test-data";
 import { runConditionFlow } from "../helpers/run-flow";
 import type { FlowConfig } from "../fixtures/flow-configs";
 
@@ -18,7 +18,7 @@ test.describe("Pasted Link Flow", () => {
       conditionJourneyType: "private",
       conditionName: "pasted-link",
       booking: {
-        appointmentType: "Video",
+        appointmentType: BOOKING_PREFERENCES.appointmentType,
         useNextAvailableSlot: true,
         autoMoveToNextDate: true,
         maxDateAttempts: 10,
