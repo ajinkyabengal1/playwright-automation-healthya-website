@@ -675,7 +675,12 @@ async function runConditionFlowImpl(
           } else {
             await signup.submitNHSForm();
           }
-          await signup.handlePDSResult();
+          await signup.handlePDSResult(
+            Boolean(
+              (user as { triggerContactRecovery?: boolean })
+                .triggerContactRecovery,
+            ),
+          );
           break;
         }
 
@@ -686,8 +691,47 @@ async function runConditionFlowImpl(
           .catch(() => false);
 
         if (hasEmail) {
-          await signup.fillContactDetails(user.email, user.phone);
-          await signup.submitAndBook();
+          const useRecoveryValues = Boolean(
+            (user as {
+              triggerContactRecovery?: boolean;
+              newEmail?: string;
+              confirmNewEmail?: string;
+              newPhone?: string;
+              confirmNewPhone?: string;
+            }).triggerContactRecovery,
+          );
+          const resolvedEmail = useRecoveryValues
+            ? (user as { newEmail?: string }).newEmail || user.email
+            : user.email;
+          const resolvedConfirmEmail = useRecoveryValues
+            ? (user as { confirmNewEmail?: string; newEmail?: string })
+                .confirmNewEmail ||
+              (user as { newEmail?: string }).newEmail ||
+              user.confirmEmail
+            : user.confirmEmail;
+          const resolvedPhone = useRecoveryValues
+            ? (user as { newPhone?: string }).newPhone || user.phone
+            : user.phone;
+          const resolvedConfirmPhone = useRecoveryValues
+            ? (user as { confirmNewPhone?: string; newPhone?: string })
+                .confirmNewPhone ||
+              (user as { newPhone?: string }).newPhone ||
+              user.confirmPhone
+            : user.confirmPhone;
+
+          await signup.fillContactDetails(
+            resolvedEmail,
+            resolvedPhone,
+            resolvedConfirmEmail,
+            resolvedConfirmPhone,
+            { preferRecoveryModal: useRecoveryValues },
+          );
+          await signup.submitAndBook(
+            Boolean(
+              (user as { triggerContactRecovery?: boolean })
+                .triggerContactRecovery,
+            ),
+          );
           await page.waitForTimeout(3_000);
         }
         break;

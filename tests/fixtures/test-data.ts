@@ -22,10 +22,25 @@ export const TEST_USER = {
   postcode: _e.TD_POSTCODE || "SW1A 1AA",
   genderValue: _e.TD_GENDER || "male",
   email: _e.TD_EMAIL || "lloyd.p2@yopmail.com",
+  confirmEmail: _e.TD_CONFIRM_EMAIL || _e.TD_EMAIL || "lloyd.p2@yopmail.com",
   guardianName: _e.TD_GUARDIAN_NAME || "Tonny stark",
   phone: _e.TD_PHONE || "447467059973",
+  confirmPhone: _e.TD_CONFIRM_PHONE || _e.TD_PHONE || "447467059973",
+  newPhone: _e.TD_NEW_PHONE || _e.TD_PHONE || "447467059973",
+  confirmNewPhone:
+    _e.TD_CONFIRM_NEW_PHONE ||
+    _e.TD_NEW_PHONE ||
+    _e.TD_PHONE ||
+    "447467059973",
+  newEmail: _e.TD_NEW_EMAIL || _e.TD_EMAIL || "lloyd.p2@yopmail.com",
+  confirmNewEmail:
+    _e.TD_CONFIRM_NEW_EMAIL ||
+    _e.TD_NEW_EMAIL ||
+    _e.TD_EMAIL ||
+    "lloyd.p2@yopmail.com",
   password: _e.TD_PASSWORD || "Test@1234",
   confirmPassword: _e.TD_CONFIRM_PASSWORD || "Test@1234",
+  triggerContactRecovery: _e.TD_TRIGGER_CONTACT_RECOVERY === "true",
   payment: {
     cardholderName: _e.TD_CARD_HOLDER || "Jhon Smith",
     cardNumber: _e.TD_CARD_NUMBER || "5555555555554444",
