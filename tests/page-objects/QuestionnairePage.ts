@@ -1864,7 +1864,7 @@ export class QuestionnairePage {
     const popup = this.page
       .locator(".ant-modal-content")
       .filter({
-        hasText: /NHS111|NHS 111|GP referal|Call 999/i,
+        hasText: /NHS111|NHS 111|GP referal|Call 999|You've reached/i,
       })
       .first();
 
