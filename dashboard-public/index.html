@@ -2766,11 +2766,16 @@
       function isHiddenInitialFlowTest(testItem) {
         const f = String(testItem?.file || "").toLowerCase();
         const base = f.split("/").pop() || f;
+        const hiddenBases = new Set([
+          "pasted-link-flow.spec.ts",
+          "pasted-link-loggedin-flow.spec.ts",
+          "yopmail-assessment-flow.spec.ts",
+        ]);
         return (
           f.includes("pasted-link-flow.spec.ts") ||
+          f.includes("pasted-link-loggedin-flow.spec.ts") ||
           f.includes("yopmail-assessment-flow.spec.ts") ||
-          base === "pasted-link-flow.spec.ts" ||
-          base === "yopmail-assessment-flow.spec.ts"
+          hiddenBases.has(base)
         );
       }
 
