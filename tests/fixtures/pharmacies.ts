@@ -5,7 +5,7 @@ export interface PharmacySite {
 
 export const PHARMACY_SITES: PharmacySite[] = [
   {
-    name: "helathya",
+    name: "healthya",
     baseURL: "https://dev.healthya.co.uk/",
   },
 ];

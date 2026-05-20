@@ -14,12 +14,34 @@ app.use("/test-results", express.static(path.join(__dirname, "test-results")));
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-app.use(
-  "/trace-viewer",
-  express.static(
+// Resolve traceViewer path — handles both npm and pnpm layouts
+function resolveTraceViewerPath() {
+  const candidates = [
     path.join(__dirname, "node_modules/playwright-core/lib/vite/traceViewer"),
-  ),
-);
+    path.join(__dirname, "node_modules/@playwright/test/node_modules/playwright-core/lib/vite/traceViewer"),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  // pnpm: find via glob-style search
+  const pnpmBase = path.join(__dirname, "node_modules/.pnpm");
+  if (fs.existsSync(pnpmBase)) {
+    for (const dir of fs.readdirSync(pnpmBase)) {
+      if (dir.startsWith("playwright-core@")) {
+        const p = path.join(pnpmBase, dir, "node_modules/playwright-core/lib/vite/traceViewer");
+        if (fs.existsSync(p)) return p;
+      }
+    }
+  }
+  return null;
+}
+
+const traceViewerPath = resolveTraceViewerPath();
+if (traceViewerPath) {
+  app.use("/trace-viewer", express.static(traceViewerPath));
+} else {
+  console.warn("⚠️  trace-viewer path not found — trace viewer will not work");
+}
 
 const TEST_DATA_PATH = path.join(__dirname, "tests/fixtures/test-data.ts");
 const PHARMACIES_PATH = path.join(__dirname, "tests/fixtures/pharmacies.ts");
@@ -788,9 +810,38 @@ app.get("/api/analyze-healthya-link", async (req, res) => {
   }
 });
 
+// Semaphore to cap concurrent headless browser launches for /api/page-meta.
+// Bulk uploads fire many requests at once — without this they overwhelm the system.
+let _pageMetaActive = 0;
+const _pageMetaQueue = [];
+const PAGE_META_CONCURRENCY = 3;
+
+function acquirePageMetaSlot() {
+  return new Promise((resolve) => {
+    const tryAcquire = () => {
+      if (_pageMetaActive < PAGE_META_CONCURRENCY) {
+        _pageMetaActive++;
+        resolve();
+      } else {
+        _pageMetaQueue.push(tryAcquire);
+      }
+    };
+    tryAcquire();
+  });
+}
+
+function releasePageMetaSlot() {
+  _pageMetaActive--;
+  if (_pageMetaQueue.length > 0) {
+    const next = _pageMetaQueue.shift();
+    next();
+  }
+}
+
 app.get("/api/page-meta", async (req, res) => {
   const url = req.query.url;
   if (!url) return res.status(400).json({ error: "url required" });
+  await acquirePageMetaSlot();
   const { chromium } = require("@playwright/test");
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
@@ -824,6 +875,7 @@ app.get("/api/page-meta", async (req, res) => {
     res.status(500).json({ conditionName: null, tag: null, error: e.message });
   } finally {
     await browser.close().catch(() => {});
+    releasePageMetaSlot();
   }
 });
 
@@ -954,7 +1006,7 @@ app.get("/api/run-tests", (req, res) => {
     "--reporter=list",
     `--output=${runOutputDir}`,
   ];
-  const effectiveProject = project || "helathya";
+  const effectiveProject = project || "healthya";
   if (effectiveProject) args.push(`--project=${effectiveProject}`);
   if (file) {
     args.push(line ? `${file}:${line}` : file);
@@ -1215,7 +1267,7 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "dashboard-public/index.html"));
 });
 
-const PORT = 7890;
+const PORT = 5001;
 app.listen(PORT, () => {
   console.log(`\n  Dashboard running at http://localhost:${PORT}\n`);
 });

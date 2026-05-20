@@ -22,7 +22,7 @@ export default defineConfig({
   },
   projects: [
     {
-      name: "helathya",
+      name: "healthya",
       use: { ...devices["Desktop Chrome"] },
     },
   ],

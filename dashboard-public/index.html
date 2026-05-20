@@ -1101,56 +1101,141 @@
 
       /* Results browser */
       #results-panel {
-        display: none; flex-direction: column; flex: 1; min-height: 0;
-        background: var(--clr-main); transition: background var(--transition);
-      }
-      #results-toolbar {
-        display: flex; align-items: center; gap: 8px;
-        padding: 10px 16px; border-bottom: 1px solid var(--clr-border);
-        background: var(--clr-surface); flex-shrink: 0;
-      }
-      #results-toolbar button { flex-shrink: 0; }
-      #results-search {
-        flex: 1; padding: 5px 10px; border: 1px solid var(--clr-border);
-        border-radius: var(--radius-sm); background: var(--clr-main);
-        color: var(--clr-txt); font-size: 12px; outline: none;
-      }
-      #results-list {
-        flex: 1; min-height: 0; overflow-y: auto; padding: 10px 14px;
-        display: flex; flex-direction: column; gap: 6px;
-      }
-      .res-item {
-        border: 1px solid var(--clr-border); border-radius: var(--radius-sm);
-        background: var(--clr-surface); overflow: hidden;
-      }
-      .res-item.selected { border-color: var(--clr-accent); }
-      .res-header {
-        display: flex; align-items: center; gap: 8px;
-        padding: 8px 12px; cursor: pointer; user-select: none;
+        display: none;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+        background: var(--clr-main);
         transition: background var(--transition);
       }
-      .res-header:hover { background: var(--clr-hover); }
-      .res-check { flex-shrink: 0; }
-      .res-name { flex: 1; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .res-size { font-size: 10px; color: var(--clr-txt-muted); flex-shrink: 0; }
-      .res-time { font-size: 10px; color: var(--clr-txt-muted); flex-shrink: 0; }
-      .res-expand { font-size: 10px; color: var(--clr-txt-muted); flex-shrink: 0; }
-      .res-files { display: none; padding: 0 12px 10px 32px; display: flex; flex-direction: column; gap: 4px; }
-      .res-files.collapsed { display: none; }
+      #results-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--clr-border);
+        background: var(--clr-sidebar);
+        flex-shrink: 0;
+        transition: background var(--transition), border-color var(--transition);
+      }
+      #results-select-all-wrap {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--clr-txt-muted);
+        cursor: pointer;
+        user-select: none;
+        flex-shrink: 0;
+      }
+      #results-select-all-wrap input {
+        cursor: pointer;
+        accent-color: var(--clr-accent);
+      }
+      #results-selected-count {
+        font-size: 11px;
+        color: var(--clr-txt-muted);
+        flex: 1;
+      }
+      .res-action-btn {
+        height: 28px;
+        padding: 0 14px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--clr-border-drk);
+        font-size: 11px;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        transition: all var(--transition);
+        background: var(--clr-surface);
+        color: var(--clr-txt);
+      }
+      .res-action-btn:hover:not(:disabled) {
+        border-color: var(--clr-accent);
+        color: var(--clr-accent);
+        background: var(--clr-hover);
+      }
+      .res-action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+      .res-delete-btn { border-color: rgba(245,88,90,0.4); color: var(--clr-fail); }
+      .res-delete-btn:hover:not(:disabled) { background: rgba(245,88,90,0.1); border-color: var(--clr-fail); color: var(--clr-fail); }
+      #results-list-wrap {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 12px 16px;
+      }
+      #results-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .res-entry {
+        border: 1px solid var(--clr-border);
+        border-radius: var(--radius-sm);
+        background: var(--clr-surface);
+        overflow: hidden;
+        transition: border-color var(--transition);
+      }
+      .res-entry:hover { border-color: var(--clr-border-drk); }
+      .res-entry.selected { border-color: var(--clr-accent); background: var(--clr-active); }
+      .res-entry-hdr {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 12px;
+        cursor: pointer;
+        user-select: none;
+      }
+      .res-entry-hdr input[type="checkbox"] {
+        cursor: pointer;
+        accent-color: var(--clr-accent);
+        flex-shrink: 0;
+      }
+      .res-name {
+        flex: 1;
+        font-size: 11.5px;
+        font-weight: 600;
+        font-family: "JetBrains Mono", monospace;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--clr-txt);
+      }
+      .res-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+      .res-badge {
+        font-size: 10px;
+        font-weight: 600;
+        padding: 2px 7px;
+        border-radius: 20px;
+        background: var(--clr-surface-2);
+        color: var(--clr-txt-muted);
+      }
+      .res-badge.video { background: rgba(16,217,138,0.12); color: var(--clr-pass); }
+      .res-badge.trace { background: rgba(56,189,248,0.12); color: var(--clr-running); }
+      .res-size { font-size: 10px; color: var(--clr-txt-muted); }
+      .res-chevron { font-size: 9px; color: var(--clr-txt-dim); transition: transform 0.2s; flex-shrink: 0; }
+      .res-entry.expanded .res-chevron { transform: rotate(90deg); }
+      .res-files { display: none; padding: 0 12px 10px 34px; gap: 5px; flex-direction: column; }
+      .res-entry.expanded .res-files { display: flex; }
       .res-file {
-        display: flex; align-items: center; gap: 8px; padding: 5px 8px;
-        border: 1px solid var(--clr-border); border-radius: var(--radius-sm);
-        text-decoration: none; color: var(--clr-txt);
-        font-size: 11px; background: var(--clr-main);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border: 1px solid var(--clr-border);
+        border-radius: var(--radius-sm);
+        background: var(--clr-sidebar);
+        font-size: 11px;
+        text-decoration: none;
+        color: var(--clr-txt);
         transition: all var(--transition);
       }
       .res-file:hover { border-color: var(--clr-accent); background: var(--clr-hover); }
-      .res-file .rf-icon { flex-shrink: 0; }
-      .res-file .rf-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .res-file .rf-icon { font-size: 12px; flex-shrink: 0; }
+      .res-file .rf-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: "JetBrains Mono", monospace; }
       .res-file .rf-size { font-size: 10px; color: var(--clr-txt-muted); flex-shrink: 0; }
-      .res-empty {
-        color: var(--clr-txt-muted); font-size: 12px; padding: 20px; text-align: center;
-      }
+      .res-file .rf-link { font-size: 10px; color: var(--clr-accent); flex-shrink: 0; }
+      .res-empty { color: var(--clr-txt-muted); font-size: 12px; padding: 24px; text-align: center; }
 
       /* Loading spinner */
       #loading {
@@ -1638,7 +1723,7 @@
     <!-- ── Status bar ──────────────────────────────────────────────────────── -->
     <div id="statusbar">
       <div id="status-dot" class="idle"></div>
-      <span id="status-text">Loading tests for helathya...</span>
+      <span id="status-text">Loading tests for healthya...</span>
       <div id="status-counts">
         <span class="cnt-pass" id="cnt-pass" style="display: none"></span>
         <span class="cnt-fail" id="cnt-fail" style="display: none"></span>
@@ -1752,7 +1837,7 @@
         </div>
         <div id="tree-hdr">Functional Test Cases</div>
         <div id="tree">
-          <div class="empty-state">Loading tests for helathya...</div>
+          <div class="empty-state">Loading tests for healthya...</div>
         </div>
         <!-- Resize: tree ↕ runs -->
         <div class="rsz-v" id="rsz-tree-runs" style="display: none"></div>
@@ -1808,7 +1893,7 @@
         <div id="output-panel">
           <div id="log">
             <span class="log-start"
-              >Ready. Single pharmacy mode: helathya.</span
+              >Ready. Single pharmacy mode: healthya.</span
             >
           </div>
         </div>
@@ -1841,12 +1926,19 @@
         <!-- Results browser panel -->
         <div id="results-panel">
           <div id="results-toolbar">
-            <input id="results-search" type="text" placeholder="Filter results…" />
-            <button class="btn btn-sm btn-danger" id="results-delete-btn" disabled>🗑 Delete</button>
-            <button class="btn btn-sm btn-secondary" id="results-refresh-btn">↺ Refresh</button>
+            <label id="results-select-all-wrap">
+              <input type="checkbox" id="results-select-all" /> Select all
+            </label>
+            <span id="results-selected-count"></span>
+            <button id="results-delete-btn" class="res-action-btn res-delete-btn" disabled>
+              Delete selected
+            </button>
+            <button id="results-refresh-btn" class="res-action-btn">
+              Refresh
+            </button>
           </div>
-          <div id="results-list">
-            <div class="res-empty">Loading…</div>
+          <div id="results-list-wrap">
+            <div id="results-list"></div>
           </div>
         </div>
 
@@ -2130,7 +2222,7 @@
       // ── State ──────────────────────────────────────────────────────────────────
       let allTests = [];
       let allTestsMaster = [];
-      const HEALTHYA_PHARMACY_NAME = "helathya";
+      const HEALTHYA_PHARMACY_NAME = "healthya";
       let currentPharmacy = HEALTHYA_PHARMACY_NAME;
       let filterText = "";
       let activeJourneyFilter = "lifestyle"; // tracks TD panel journey type select
@@ -2305,20 +2397,27 @@
           const data = await response.json();
           if (data.links && data.links.length > 0) {
             let addedCount = 0;
+            const newEntries = [];
             data.links.forEach((link) => {
               if (!queuedLinks.some(e => e.url === link)) {
                 const entry = { url: link, conditionName: null, tag: null, loading: true };
                 queuedLinks.push(entry);
+                newEntries.push(entry);
                 addedCount++;
-                fetchPageMeta(link).then((meta) => {
+              }
+            });
+            renderLinkQueue();
+            // Stagger fetches 200ms apart so server concurrency limit handles them smoothly
+            newEntries.forEach((entry, i) => {
+              setTimeout(() => {
+                fetchPageMeta(entry.url).then((meta) => {
                   entry.conditionName = meta.conditionName || null;
                   entry.tag = meta.tag || null;
                   entry.loading = false;
                   renderLinkQueue();
                 });
-              }
+              }, i * 200);
             });
-            renderLinkQueue();
             setStatus(
               "pass",
               `Successfully added ${addedCount} new link(s) from ${file.name}.`,
@@ -2342,7 +2441,7 @@
       btnRunQueuedLinks.addEventListener("click", async () => {
         if (queuedLinks.length === 0) return;
         if (!isHealthyaSelected()) {
-          alert("Select helathya pharmacy first.");
+          alert("Select healthya pharmacy first.");
           return;
         }
 
@@ -2881,98 +2980,136 @@
       }
 
       // ── Results browser ────────────────────────────────────────────────────────
+      const resultsList = document.getElementById("results-list");
+      const resultsSelectAll = document.getElementById("results-select-all");
+      const resultsDeleteBtn = document.getElementById("results-delete-btn");
+      const resultsSelCount = document.getElementById("results-selected-count");
       let resultsData = [];
-      let resultsSelected = new Set();
 
       function fmtBytes(b) {
-        if (b < 1024) return b + " B";
-        if (b < 1024 * 1024) return (b / 1024).toFixed(1) + " KB";
-        return (b / (1024 * 1024)).toFixed(1) + " MB";
-      }
-      function fmtTime(ms) {
-        const d = new Date(ms);
-        return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        if (b < 1024) return `${b} B`;
+        if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+        return `${(b / (1024 * 1024)).toFixed(1)} MB`;
       }
 
-      async function loadResults() {
-        const list = document.getElementById("results-list");
-        list.innerHTML = '<div class="res-empty">Loading…</div>';
-        try {
-          const r = await fetch("/api/results");
-          resultsData = await r.json();
-          resultsSelected.clear();
-          syncResultsSelection();
-          renderResults(document.getElementById("results-search").value || "");
-        } catch (e) {
-          list.innerHTML = `<div class="res-empty">Error: ${e.message}</div>`;
-        }
-      }
-
-      function renderResults(filter) {
-        const list = document.getElementById("results-list");
-        const items = resultsData.filter(r => !filter || r.name.toLowerCase().includes(filter.toLowerCase()));
-        if (items.length === 0) {
-          list.innerHTML = '<div class="res-empty">No results found.</div>';
+      function renderResults() {
+        if (!resultsData.length) {
+          resultsList.innerHTML = '<div class="res-empty">No test result directories found.</div>';
+          resultsSelectAll.checked = false;
+          resultsDeleteBtn.disabled = true;
+          resultsSelCount.textContent = "";
           return;
         }
-        list.innerHTML = items.map(r => {
-          const sel = resultsSelected.has(r.name);
-          const fileRows = r.files.map(f => {
-            const icon = f.type === "video" ? "🎬" : f.type === "trace" ? "🔍" : "📄";
-            return `<a class="res-file" href="${f.url}" target="_blank"><span class="rf-icon">${icon}</span><span class="rf-name">${f.name}</span><span class="rf-size">${fmtBytes(f.size)}</span></a>`;
-          }).join("");
-          return `<div class="res-item${sel ? " selected" : ""}" data-name="${r.name}">
-            <div class="res-header" onclick="toggleResItem(event,'${r.name}')">
-              <input type="checkbox" class="res-check" ${sel ? "checked" : ""} onclick="event.stopPropagation();toggleResCheck('${r.name}',this.checked)" />
-              <span class="res-name">${r.name}</span>
-              <span class="res-size">${fmtBytes(r.totalSize)}</span>
-              <span class="res-time">${fmtTime(r.mtime)}</span>
-              <span class="res-expand">▾</span>
+        resultsList.innerHTML = "";
+        resultsData.forEach((entry, i) => {
+          const videoCount = entry.files.filter((f) => f.type === "video").length;
+          const traceCount = entry.files.filter((f) => f.type === "trace").length;
+          const div = document.createElement("div");
+          div.className = "res-entry";
+          div.dataset.idx = i;
+
+          const badges = [
+            videoCount ? `<span class="res-badge video">📹 ${videoCount}</span>` : "",
+            traceCount ? `<span class="res-badge trace">🔍 ${traceCount}</span>` : "",
+          ].filter(Boolean).join(" ");
+
+          let filesHtml = "";
+          entry.files.forEach((f) => {
+            const isTrace = f.type === "trace";
+            const href = isTrace
+              ? `${window.location.origin}/trace-viewer/index.html?trace=${encodeURIComponent(window.location.origin + f.url)}`
+              : f.url;
+            const icon = isTrace ? "🔍" : "📹";
+            const label = isTrace ? "Open Trace Viewer ↗" : "↗";
+            filesHtml += `<a class="res-file" href="${href}" target="_blank">
+              <span class="rf-icon">${icon}</span>
+              <span class="rf-name">${escapeHtml(f.name)}</span>
+              <span class="rf-size">${fmtBytes(f.size)}</span>
+              <span class="rf-link">${label}</span>
+            </a>`;
+          });
+          if (!filesHtml)
+            filesHtml = `<div style="font-size:11px;color:var(--clr-txt-muted);padding:4px 0">No videos or traces</div>`;
+
+          div.innerHTML = `
+            <div class="res-entry-hdr">
+              <input type="checkbox" class="res-chk" data-idx="${i}">
+              <span class="res-name">${escapeHtml(entry.name)}</span>
+              <div class="res-meta">
+                ${badges}
+                <span class="res-size">${fmtBytes(entry.totalSize)}</span>
+              </div>
+              <span class="res-chevron">▶</span>
             </div>
-            <div class="res-files collapsed" id="res-files-${r.name}">${fileRows || '<span style="font-size:11px;color:var(--clr-txt-muted)">No video/trace files</span>'}</div>
-          </div>`;
-        }).join("");
-      }
+            <div class="res-files">${filesHtml}</div>`;
 
-      function toggleResItem(e, name) {
-        if (e.target.type === "checkbox") return;
-        const el = document.getElementById("res-files-" + name);
-        if (el) el.classList.toggle("collapsed");
-      }
-
-      function toggleResCheck(name, checked) {
-        if (checked) resultsSelected.add(name);
-        else resultsSelected.delete(name);
+          div.querySelector(".res-entry-hdr").addEventListener("click", (e) => {
+            if (e.target.type === "checkbox") return;
+            div.classList.toggle("expanded");
+          });
+          div.querySelector(".res-chk").addEventListener("change", syncResultsSelection);
+          resultsList.appendChild(div);
+        });
         syncResultsSelection();
-        const item = document.querySelector(`.res-item[data-name="${name}"]`);
-        if (item) item.classList.toggle("selected", checked);
       }
 
       function syncResultsSelection() {
-        const btn = document.getElementById("results-delete-btn");
-        if (btn) btn.disabled = resultsSelected.size === 0;
+        const checks = resultsList.querySelectorAll(".res-chk");
+        const total = checks.length;
+        const checked = [...checks].filter((c) => c.checked).length;
+        resultsSelectAll.checked = total > 0 && checked === total;
+        resultsSelectAll.indeterminate = checked > 0 && checked < total;
+        resultsDeleteBtn.disabled = checked === 0;
+        resultsSelCount.textContent = checked > 0 ? `${checked} of ${total} selected` : "";
+        resultsList.querySelectorAll(".res-entry").forEach((el) => {
+          const chk = el.querySelector(".res-chk");
+          el.classList.toggle("selected", chk && chk.checked);
+        });
       }
 
-      const resultsSearchEl = document.getElementById("results-search");
-      if (resultsSearchEl) {
-        resultsSearchEl.addEventListener("input", () => renderResults(resultsSearchEl.value));
-      }
-      const resultsRefreshBtn = document.getElementById("results-refresh-btn");
-      if (resultsRefreshBtn) resultsRefreshBtn.addEventListener("click", loadResults);
+      resultsSelectAll.addEventListener("change", () => {
+        resultsList.querySelectorAll(".res-chk").forEach((c) => {
+          c.checked = resultsSelectAll.checked;
+        });
+        syncResultsSelection();
+      });
 
-      const resultsDeleteBtn = document.getElementById("results-delete-btn");
-      if (resultsDeleteBtn) {
-        resultsDeleteBtn.addEventListener("click", async () => {
-          if (!resultsSelected.size) return;
-          const names = [...resultsSelected];
-          if (!confirm(`Delete ${names.length} result folder(s)?`)) return;
-          await fetch("/api/results", {
+      resultsDeleteBtn.addEventListener("click", async () => {
+        const checks = [...resultsList.querySelectorAll(".res-chk")].filter((c) => c.checked);
+        const names = checks.map((c) => resultsData[+c.dataset.idx].name);
+        if (!names.length) return;
+        if (!confirm(`Delete ${names.length} result director${names.length === 1 ? "y" : "ies"}? This cannot be undone.`)) return;
+        resultsDeleteBtn.disabled = true;
+        resultsDeleteBtn.textContent = "Deleting…";
+        try {
+          const r = await fetch("/api/results", {
             method: "DELETE",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ names }),
           });
+          const data = await r.json();
+          if (data.errors && data.errors.length) {
+            alert(`Some deletions failed:\n${data.errors.map((e) => `${e.name}: ${e.error}`).join("\n")}`);
+          }
+        } catch (err) {
+          alert(`Delete failed: ${err.message}`);
+        } finally {
+          resultsDeleteBtn.textContent = "Delete selected";
           await loadResults();
-        });
+        }
+      });
+
+      document.getElementById("results-refresh-btn").addEventListener("click", loadResults);
+
+      async function loadResults() {
+        resultsList.innerHTML = '<div class="res-empty">Loading…</div>';
+        try {
+          const r = await fetch("/api/results");
+          resultsData = await r.json();
+          renderResults();
+        } catch (e) {
+          resultsList.innerHTML = `<div class="res-empty">Error: ${escapeHtml(e.message)}</div>`;
+        }
       }
 
       // ── Status helpers ─────────────────────────────────────────────────────────
@@ -3021,7 +3158,7 @@
 
       btnRunLinkFlow.addEventListener("click", async () => {
         if (!isHealthyaSelected()) {
-          alert("Select helathya first.");
+          alert("Select healthya first.");
           return;
         }
         const link = getValidCustomLink();
