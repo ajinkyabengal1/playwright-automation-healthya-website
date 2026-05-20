@@ -87,10 +87,20 @@ export class QuestionnairePage {
    */
   async answerAllQuestions() {
     for (let step = 0; step < this.MAX_QUESTIONS; step++) {
+      // Modal guard first: some "You've reached" overlays block all other UI.
+      if (await this.handleNHS111Popup()) {
+        if (this.endAssessmentClicked) {
+          console.log(
+            "[QuestionnairePage] End Assessment clicked from modal guard — stopping questionnaire flow",
+          );
+          return;
+        }
+      }
+
       if (this.endAssessmentClicked) {
         console.log(
           "[QuestionnairePage] End Assessment already clicked — stopping questionnaire flow",
-        );
+          );
         return;
       }
       await this.page.waitForTimeout(200);
@@ -1862,9 +1872,16 @@ export class QuestionnairePage {
     }
 
     const popup = this.page
-      .locator(".ant-modal-content")
+      .locator(
+        [
+          ".ant-modal-content",
+          ".ant-modal-child-content",
+          '[class*="ant-modal"]',
+        ].join(", "),
+      )
       .filter({
-        hasText: /NHS111|NHS 111|GP referal|Call 999|You've reached/i,
+        hasText:
+          /NHS111|NHS 111|GP referal|GP referral|Call 999|You['’]ve reached|Here['’]s what we recommend|Service Unavailable/i,
       })
       .first();
 
@@ -1902,10 +1919,12 @@ export class QuestionnairePage {
       const endAssessmentButton = popup
         .locator(
           [
+            "button.end-assessment-button",
             'button:has-text("End Assessment")',
             'a:has-text("End Assessment")',
             'button:has-text("End Assesment")',
             'a:has-text("End Assesment")',
+            "text=/end asses?sment/i",
           ].join(", "),
         )
         .first();
