@@ -39,9 +39,15 @@ export class QuestionnairePage {
   /** Wait for any full-page spinner overlay to disappear before interacting. */
   private async waitForSpinnerToHide(): Promise<void> {
     const spinner = this.page.locator(".spinner-block");
-    const isPresent = await spinner.count().then((c) => c > 0).catch(() => false);
+    const isPresent = await spinner
+      .count()
+      .then((c) => c > 0)
+      .catch(() => false);
     if (isPresent) {
-      await spinner.first().waitFor({ state: "hidden", timeout: 10_000 }).catch(() => {});
+      await spinner
+        .first()
+        .waitFor({ state: "hidden", timeout: 10_000 })
+        .catch(() => {});
     }
   }
 
@@ -1918,11 +1924,9 @@ export class QuestionnairePage {
       console.log("[QuestionnairePage] Clicking End Assessment button");
 
       await endAssessmentButton.scrollIntoViewIfNeeded().catch(() => {});
-      await endAssessmentButton
-        .click({ force: true })
-        .catch(async () => {
-          await endAssessmentButton.evaluate((el: HTMLElement) => el.click());
-        });
+      await endAssessmentButton.click({ force: true }).catch(async () => {
+        await endAssessmentButton.evaluate((el: HTMLElement) => el.click());
+      });
 
       this.endAssessmentClicked = true;
       await this.page.waitForTimeout(1500);
@@ -2145,7 +2149,27 @@ export class QuestionnairePage {
             el.closest(".questionnaire-answer-wrapper")?.textContent ?? "",
         )
         .catch(() => "");
-      const val = /height/i.test(nearText) ? "170" : "70";
+      const placeholder =
+        (await input.getAttribute("placeholder").catch(() => "")) || "";
+      const combined = (placeholder + " " + nearText).toLowerCase();
+      // Detect scale ranges: "rate from 1 to 10", "scale 1-10", "(1-10)", etc.
+      const rangeMatch =
+        combined.match(/from\s+(\d+)\s+to\s+(\d+)/i) ||
+        combined.match(/(?:scale|range|between)\s*(\d+)\s*[-–]\s*(\d+)/i) ||
+        combined.match(/\((\d+)\s*[-–]\s*(\d+)\)/);
+      let val: string;
+      if (rangeMatch) {
+        const min = parseInt(rangeMatch[1], 10);
+        const max = parseInt(rangeMatch[2], 10);
+        val =
+          !isNaN(min) && !isNaN(max) && max > min
+            ? Math.floor((min + max) / 2).toString()
+            : "5";
+      } else if (/height/i.test(combined)) {
+        val = "170";
+      } else {
+        val = "70";
+      }
       await input.scrollIntoViewIfNeeded().catch(() => {});
       await input.fill(val).catch(() => {});
       await input.blur().catch(() => {});
@@ -2175,10 +2199,11 @@ export class QuestionnairePage {
       const combined = (placeholder + " " + nearText).toLowerCase();
 
       let val = "None";
-      // Handle range/scale patterns: "scale 1-10", "range 1-10", "(1-10)"
+      // Handle range/scale patterns: "rate from 1 to 10", "scale 1-10", "(1-10)", etc.
       const rangeMatch =
-        combined.match(/(?:scale|range|between)\s*(\d+)\s*-\s*(\d+)/i) ||
-        combined.match(/\((\d+)\s*-\s*(\d+)\)/);
+        combined.match(/from\s+(\d+)\s+to\s+(\d+)/i) ||
+        combined.match(/(?:scale|range|between)\s*(\d+)\s*[-–]\s*(\d+)/i) ||
+        combined.match(/\((\d+)\s*[-–]\s*(\d+)\)/);
       if (rangeMatch) {
         const min = parseInt(rangeMatch[1], 10);
         const max = parseInt(rangeMatch[2], 10);
