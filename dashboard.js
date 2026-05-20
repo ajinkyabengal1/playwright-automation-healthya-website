@@ -981,6 +981,8 @@ app.get("/api/run-tests", (req, res) => {
       set("TD_SHIP_ADDRESS_ACTION", sh.addressAction);
       set("TD_PAYMENT_METHOD", sh.paymentMethod);
       set("TD_APPOINTMENT_TYPE",    a.appointmentType);
+      // Always override TD_PIN to prevent parent env from leaking a stale value
+      tdEnv["TD_PIN"] = (u.pin != null && String(u.pin).trim()) ? String(u.pin).trim() : "";
       set("TD_TRIGGER_CONTACT_RECOVERY", String(u.triggerContactRecovery));
       set("TD_NEW_PHONE", u.newPhone);
       set("TD_CONFIRM_NEW_PHONE", u.confirmNewPhone);

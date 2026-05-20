@@ -1,4 +1,4 @@
-import { Page, expect } from "@playwright/test";
+import { Page, expect, test } from "@playwright/test";
 import {
   TEST_USER,
   CART_PREFERENCES,
@@ -63,6 +63,14 @@ function detectQuestionnaireRulesKeyFromText(text: string): string | null {
   }
 
   return null;
+}
+
+async function checkLinkExpired(page: Page): Promise<void> {
+  const bodyText = await page.locator("body").innerText().catch(() => "");
+  if (/link is expired/i.test(bodyText)) {
+    console.log("⚠ Link is Expired — stopping test.");
+    test.skip(true, "Link is Expired — this consultation link is no longer available.");
+  }
 }
 
 async function detectCurrentStep(page: Page): Promise<JourneyStep> {
@@ -364,6 +372,7 @@ async function runConditionFlowImpl(
   if (startUrl) {
     console.log(`✔ Direct patient flow start URL: ${startUrl}`);
     await page.goto(startUrl, { waitUntil: "domcontentloaded" });
+    await checkLinkExpired(page);
     const landingDetected = await landingPage.isVisible();
     if (landingDetected) {
       const journey = await landingPage.detectJourneyFlow();

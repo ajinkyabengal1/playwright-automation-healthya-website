@@ -153,7 +153,8 @@
       #custom-link-container {
         position: relative;
         flex: 1;
-        max-width: 760px;
+        max-width: 400px;
+        min-width: 160px;
         display: flex;
         align-items: center;
       }
@@ -172,6 +173,65 @@
       #custom-link-input:focus {
         border-color: var(--clr-accent);
       }
+
+      /* ── Flow mode toggle ───────────────────────────────────────────────────── */
+      #flow-mode-toggle {
+        display: none;
+        background: var(--clr-surface);
+        border: 1px solid var(--clr-border-drk);
+        border-radius: var(--radius-sm);
+        padding: 2px;
+        gap: 2px;
+        flex-shrink: 0;
+        align-items: center;
+      }
+      .mode-btn {
+        height: 28px;
+        padding: 0 10px;
+        border-radius: 4px;
+        border: none;
+        font-size: 11px;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        color: var(--clr-txt-muted);
+        background: transparent;
+        transition: all var(--transition);
+        white-space: nowrap;
+      }
+      .mode-btn.active {
+        background: var(--clr-accent);
+        color: #fff;
+      }
+      #dob-input,
+      #pin-input {
+        height: 34px;
+        padding: 0 10px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--clr-border-drk);
+        background: var(--clr-surface);
+        color: var(--clr-txt);
+        font-size: 12px;
+        font-family: inherit;
+        outline: none;
+        flex-shrink: 0;
+      }
+      #dob-input { width: 116px; }
+      #pin-input { width: 128px; }
+      #dob-input:focus,
+      #pin-input:focus {
+        border-color: var(--clr-accent);
+      }
+      #dob-input::placeholder,
+      #pin-input::placeholder {
+        color: var(--clr-txt-dim);
+      }
+      .rc-dobpin {
+        font-size: 9px;
+        color: var(--clr-txt-dim);
+        margin-top: 1px;
+      }
+
       #btn-clear-link {
         position: absolute;
         right: 6px;
@@ -1639,19 +1699,38 @@
     <header id="header">
       <div class="logo">🎭</div>
       <div class="title">Playwright <span>Runner</span></div>
+      <div id="flow-mode-toggle">
+        <button id="btn-mode-nonlogged" class="mode-btn active">Non Logged In</button>
+        <button id="btn-mode-logged" class="mode-btn">Logged In</button>
+      </div>
       <div id="custom-link-wrap">
         <div id="custom-link-container">
           <input
             id="custom-link-input"
             type="url"
-            placeholder="Paste QR/API link and click Run Link Flow"
+            placeholder="Paste QR/API link"
           />
           <button id="btn-clear-link" title="Clear input">&times;</button>
         </div>
+        <!-- Logged-in extra fields -->
+        <input
+          id="dob-input"
+          type="text"
+          placeholder="DD-MM-YYYY"
+          style="display: none"
+          autocomplete="off"
+        />
+        <input
+          id="pin-input"
+          type="text"
+          placeholder="Enter Pin Number"
+          style="display: none"
+          autocomplete="off"
+        />
         <button
           id="btn-add-link"
           class="hdr-btn"
-          title="Add to multi-link queue"
+          title="Add to queue"
           style="
             padding: 0 10px;
             background: var(--clr-surface);
@@ -1685,6 +1764,7 @@
           id="btn-run-link-flow"
           type="button"
           style="
+            display: none;
             background: linear-gradient(
               135deg,
               var(--clr-accent),
@@ -2227,7 +2307,8 @@
       let filterText = "";
       let activeJourneyFilter = "lifestyle"; // tracks TD panel journey type select
       let visibleTestCases = []; // set by renderTree() — used by Run All
-      let queuedLinks = []; // array of { url, conditionName, tag, loading }
+      let queuedLinks = []; // array of { url, conditionName, tag, loading, flowMode, dob?, dobDay?, dobMonth?, dobYear?, pin? }
+      let flowMode = "non-logged"; // "non-logged" | "logged-in"
 
       async function fetchPageMeta(url) {
         try {
@@ -2272,26 +2353,63 @@
       const customLinkWrap = document.getElementById("custom-link-wrap");
       const customLinkInput = document.getElementById("custom-link-input");
       const btnClearLink = document.getElementById("btn-clear-link");
+      const dobInput = document.getElementById("dob-input");
+      const pinInput = document.getElementById("pin-input");
+      const btnModeNonLogged = document.getElementById("btn-mode-nonlogged");
+      const btnModeLogged = document.getElementById("btn-mode-logged");
+      const flowModeToggle = document.getElementById("flow-mode-toggle");
+      const btnRunLinkFlow = document.getElementById("btn-run-link-flow");
+      const btnAddLink = document.getElementById("btn-add-link");
+      const btnUploadFile = document.getElementById("btn-upload-file");
 
       function updateClearButton() {
         btnClearLink.style.display = customLinkInput.value ? "flex" : "none";
       }
 
-      customLinkInput.addEventListener("input", updateClearButton);
+      function updateAddLinkState() {
+        if (flowMode === "logged-in") {
+          btnAddLink.disabled = !(
+            customLinkInput.value.trim() &&
+            dobInput.value.trim() &&
+            pinInput.value.trim()
+          );
+        } else {
+          btnAddLink.disabled = false;
+        }
+      }
+
+      function setFlowMode(mode) {
+        flowMode = mode;
+        btnModeNonLogged.classList.toggle("active", mode === "non-logged");
+        btnModeLogged.classList.toggle("active", mode === "logged-in");
+        dobInput.style.display = mode === "logged-in" ? "" : "none";
+        pinInput.style.display = mode === "logged-in" ? "" : "none";
+        btnUploadFile.style.display = mode === "logged-in" ? "none" : "";
+        updateAddLinkState();
+        queuedLinks = [];
+        renderLinkQueue();
+      }
+
+      btnModeNonLogged.addEventListener("click", () => setFlowMode("non-logged"));
+      btnModeLogged.addEventListener("click", () => setFlowMode("logged-in"));
+
+      customLinkInput.addEventListener("input", () => {
+        updateClearButton();
+        updateAddLinkState();
+      });
+      dobInput.addEventListener("input", updateAddLinkState);
+      pinInput.addEventListener("input", updateAddLinkState);
 
       btnClearLink.addEventListener("click", () => {
         customLinkInput.value = "";
         updateClearButton();
+        updateAddLinkState();
         customLinkInput.focus();
-        // Clear analysis
         healthyaAnalysis = null;
         if (typeof resetJourneyFlowUI === "function") {
           resetJourneyFlowUI();
         }
       });
-      const btnRunLinkFlow = document.getElementById("btn-run-link-flow");
-      const btnAddLink = document.getElementById("btn-add-link");
-      const btnUploadFile = document.getElementById("btn-upload-file");
       const fileInput = document.getElementById("file-input");
       const linkQueueWrap = document.getElementById("link-queue-wrap");
       const linkQueueList = document.getElementById("link-queue-list");
@@ -2325,7 +2443,8 @@
 
       // ── Multi-Link Queue ───────────────────────────────────────────────────────
       function renderLinkQueue() {
-        btnRunLinkFlow.style.display = queuedLinks.length > 0 ? "none" : "";
+        // Run Link visible only when exactly 1 queued entry
+        btnRunLinkFlow.style.display = queuedLinks.length === 1 ? "" : "none";
         if (queuedLinks.length === 0) {
           linkQueueWrap.style.display = "none";
           return;
@@ -2334,14 +2453,23 @@
         queuedLinks.forEach((entry, idx) => {
           const div = document.createElement("div");
           div.style.cssText =
-            "display:flex;align-items:center;gap:5px;font-size:10px;color:var(--clr-txt-muted);padding:5px 0;border-bottom:1px solid var(--clr-border);overflow:hidden;";
+            "display:flex;flex-direction:column;gap:2px;font-size:10px;color:var(--clr-txt-muted);padding:5px 0;border-bottom:1px solid var(--clr-border);overflow:hidden;";
           const label = entry.loading
             ? `⏳ ${entry.url.split("/").pop().substring(0, 30)}...`
             : entry.conditionName || entry.url.split("/").pop().substring(0, 30);
           const tagHtml = entry.tag
             ? `<span style="flex-shrink:0;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;background:${entry.tag === "NHS" ? "rgba(0,94,184,.18)" : "rgba(124,106,247,.18)"};color:${entry.tag === "NHS" ? "#4fa3e8" : "#a78cf7"};border:1px solid ${entry.tag === "NHS" ? "rgba(0,94,184,.35)" : "rgba(124,106,247,.35)"};">${entry.tag}</span>`
             : "";
-          div.innerHTML = `<span style="flex-shrink:0;color:var(--clr-txt-dim)">${idx + 1}.</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${entry.url}">${label}</span>${tagHtml}`;
+          const dobPinHtml = entry.flowMode === "logged-in" && entry.dob
+            ? `<span style="font-size:9px;color:var(--clr-txt-dim)">DOB: ${entry.dob} · PIN: ${entry.pin}</span>`
+            : "";
+          div.innerHTML = `
+            <div style="display:flex;align-items:center;gap:5px;overflow:hidden;">
+              <span style="flex-shrink:0;color:var(--clr-txt-dim)">${idx + 1}.</span>
+              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${entry.url}">${label}</span>
+              ${tagHtml}
+            </div>
+            ${dobPinHtml}`;
           linkQueueList.appendChild(div);
         });
         linkQueueHdr.textContent = `Pending Links (${queuedLinks.length})`;
@@ -2351,21 +2479,67 @@
       btnAddLink.addEventListener("click", () => {
         const link = customLinkInput.value.trim();
         if (!link) return;
-        try {
-          new URL(link);
-          const entry = { url: link, conditionName: null, tag: null, loading: true };
-          queuedLinks.push(entry);
-          customLinkInput.value = "";
-          updateClearButton();
-          renderLinkQueue();
-          fetchPageMeta(link).then((meta) => {
-            entry.conditionName = meta.conditionName || null;
-            entry.tag = meta.tag || null;
-            entry.loading = false;
+
+        if (flowMode === "logged-in") {
+          const dob = dobInput.value.trim();
+          const pin = pinInput.value.trim();
+          if (!dob || !pin) {
+            alert("Fill in DOB (DD-MM-YYYY) and PIN for logged-in flow.");
+            return;
+          }
+          const parts = dob.split("-");
+          if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) {
+            alert("DOB must be in DD-MM-YYYY format, e.g. 15-06-1990.");
+            return;
+          }
+          const [dobDay, dobMonth, dobYear] = parts;
+          try {
+            new URL(link);
+            const entry = {
+              url: link,
+              conditionName: null,
+              tag: null,
+              loading: true,
+              flowMode: "logged-in",
+              dob,
+              dobDay,
+              dobMonth,
+              dobYear,
+              pin,
+            };
+            queuedLinks.push(entry);
+            customLinkInput.value = "";
+            dobInput.value = "";
+            pinInput.value = "";
+            updateClearButton();
+            updateAddLinkState();
             renderLinkQueue();
-          });
-        } catch (_) {
-          alert("Please paste a valid URL first.");
+            fetchPageMeta(link).then((meta) => {
+              entry.conditionName = meta.conditionName || null;
+              entry.tag = meta.tag || null;
+              entry.loading = false;
+              renderLinkQueue();
+            });
+          } catch (_) {
+            alert("Please paste a valid URL first.");
+          }
+        } else {
+          try {
+            new URL(link);
+            const entry = { url: link, conditionName: null, tag: null, loading: true, flowMode: "non-logged" };
+            queuedLinks.push(entry);
+            customLinkInput.value = "";
+            updateClearButton();
+            renderLinkQueue();
+            fetchPageMeta(link).then((meta) => {
+              entry.conditionName = meta.conditionName || null;
+              entry.tag = meta.tag || null;
+              entry.loading = false;
+              renderLinkQueue();
+            });
+          } catch (_) {
+            alert("Please paste a valid URL first.");
+          }
         }
       });
 
@@ -2449,21 +2623,32 @@
         queuedLinks = [];
         renderLinkQueue();
 
-        const tdOverrides = btoa(JSON.stringify(tdCollectForm()));
-
         let firstRunId = null;
         for (const entry of linksToRun) {
           const url = entry.url;
           const conditionName = entry.conditionName;
           const tag = entry.tag;
+          const isLoggedIn = entry.flowMode === "logged-in";
           const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
           const runLabel = conditionName || `Batch: ${url.split("/").pop().substring(0, 10)}...`;
+
+          const baseOverrides = tdCollectForm();
+          if (isLoggedIn) {
+            baseOverrides.user.dobDay = entry.dobDay;
+            baseOverrides.user.dobMonth = entry.dobMonth;
+            baseOverrides.user.dobYear = entry.dobYear;
+            baseOverrides.user.pin = entry.pin;
+          }
+          const tdOverrides = btoa(JSON.stringify(baseOverrides));
 
           runs.set(runId, {
             label: runLabel,
             conditionName,
             tag,
             rawUrl: url,
+            dob: entry.dob || null,
+            pin: entry.pin || null,
+            flowMode: entry.flowMode || "non-logged",
             status: "queued",
             logs: [],
             artifacts: null,
@@ -2478,10 +2663,12 @@
 
           runQueue.push({
             runId,
-            file: "tests/e2e/pasted-link-flow.spec.ts",
+            file: isLoggedIn
+              ? "tests/e2e/pasted-link-loggedin-flow.spec.ts"
+              : "tests/e2e/pasted-link-flow.spec.ts",
             label: runLabel,
             rawLink: url,
-            tdOverrides: tdOverrides,
+            tdOverrides,
           });
 
           addRunCard(runId);
@@ -2490,7 +2677,6 @@
         updateQueuePositions();
         updateGlobalStatus();
         processQueue();
-        // Focus the bottom-most card (first added, since cards are prepended)
         if (firstRunId) selectRun(firstRunId);
       });
 
@@ -2639,6 +2825,7 @@
 
       function updateCustomLinkVisibility() {
         customLinkWrap.style.display = "flex";
+        flowModeToggle.style.display = "flex";
       }
 
       function resetJourneyFlowUI() {
@@ -3161,22 +3348,35 @@
           alert("Select healthya first.");
           return;
         }
-        const link = getValidCustomLink();
-        if (!link) {
-          alert("Paste a valid API link first.");
-          customLinkInput.focus();
-          return;
-        }
+        if (queuedLinks.length !== 1) return;
+
+        const entry = queuedLinks[0];
+        queuedLinks = [];
+        renderLinkQueue();
+
         clearLog();
         resetJourneyFlowUI();
 
+        const isLoggedIn = entry.flowMode === "logged-in";
         const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-        const tdOverrides = btoa(JSON.stringify(tdCollectForm()));
+
+        const baseOverrides = tdCollectForm();
+        if (isLoggedIn) {
+          baseOverrides.user.dobDay = entry.dobDay;
+          baseOverrides.user.dobMonth = entry.dobMonth;
+          baseOverrides.user.dobYear = entry.dobYear;
+          baseOverrides.user.pin = entry.pin;
+        }
+        const tdOverrides = btoa(JSON.stringify(baseOverrides));
+
         const runEntry = {
-          label: "Healthya Link Flow",
-          conditionName: null,
-          tag: null,
-          rawUrl: link,
+          label: isLoggedIn ? "Healthya Logged-In Flow" : "Healthya Link Flow",
+          conditionName: entry.conditionName || null,
+          tag: entry.tag || null,
+          rawUrl: entry.url,
+          dob: entry.dob || null,
+          pin: entry.pin || null,
+          flowMode: entry.flowMode || "non-logged",
           status: "queued",
           logs: [],
           artifacts: null,
@@ -3192,9 +3392,11 @@
 
         runQueue.push({
           runId,
-          file: "tests/e2e/pasted-link-flow.spec.ts",
+          file: isLoggedIn
+            ? "tests/e2e/pasted-link-loggedin-flow.spec.ts"
+            : "tests/e2e/pasted-link-flow.spec.ts",
           label: runEntry.label,
-          rawLink: link,
+          rawLink: entry.url,
           tdOverrides,
         });
 
@@ -3204,33 +3406,28 @@
         updateGlobalStatus();
         processQueue();
 
-        // Fetch metadata in background and update the card
-        fetchPageMeta(link).then((meta) => {
-          if (meta.conditionName) {
-            runEntry.conditionName = meta.conditionName;
-            runEntry.tag = meta.tag || null;
-            runEntry.label = meta.conditionName;
-            const card = runsList.querySelector(`.run-card[data-runid="${runId}"]`);
-            if (card) {
-              const lbl = card.querySelector(".rc-label");
-              if (lbl) lbl.textContent = meta.conditionName;
-              const existingTag = card.querySelector(".rc-tag");
-              if (existingTag) existingTag.remove();
-              if (meta.tag) {
-                const t = document.createElement("span");
-                t.className = `rc-tag rc-tag-${meta.tag.toLowerCase()}`;
-                t.textContent = meta.tag;
-                lbl.after(t);
+        if (!entry.conditionName) {
+          fetchPageMeta(entry.url).then((meta) => {
+            if (meta.conditionName) {
+              runEntry.conditionName = meta.conditionName;
+              runEntry.tag = meta.tag || null;
+              runEntry.label = meta.conditionName;
+              const card = runsList.querySelector(`.run-card[data-runid="${runId}"]`);
+              if (card) {
+                const lbl = card.querySelector(".rc-label");
+                if (lbl) lbl.textContent = meta.conditionName;
+                const existingTag = card.querySelector(".rc-tag");
+                if (existingTag) existingTag.remove();
+                if (meta.tag) {
+                  const t = document.createElement("span");
+                  t.className = `rc-tag rc-tag-${meta.tag.toLowerCase()}`;
+                  t.textContent = meta.tag;
+                  lbl.after(t);
+                }
               }
             }
-          }
-        });
-      });
-
-      customLinkInput.addEventListener("keydown", async (e) => {
-        if (e.key !== "Enter") return;
-        e.preventDefault();
-        btnRunLinkFlow.click();
+          });
+        }
       });
 
       // ── Test list load ─────────────────────────────────────────────────────────
@@ -3444,6 +3641,9 @@
         const copyHtml = run.rawUrl
           ? `<button class="rc-copy-url" title="Copy URL">🔗</button>`
           : "";
+        const dobPinHtml = run.flowMode === "logged-in" && run.dob
+          ? `<div class="rc-dobpin">DOB: ${run.dob} · PIN: ${run.pin}</div>`
+          : "";
         card.innerHTML = `
         <span class="rc-dot ${run.status}"></span>
         <div class="rc-info">
@@ -3451,6 +3651,7 @@
             <span class="rc-label" title="${run.rawUrl || run.label}">${displayName}</span>
             ${tagHtml}${copyHtml}
           </div>
+          ${dobPinHtml}
           ${
             isQueued
               ? `<div class="rc-queue-pos">⏳ in queue</div>`
