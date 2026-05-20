@@ -36,6 +36,15 @@ export class QuestionnairePage {
     return this.endAssessmentClicked;
   }
 
+  /** Wait for any full-page spinner overlay to disappear before interacting. */
+  private async waitForSpinnerToHide(): Promise<void> {
+    const spinner = this.page.locator(".spinner-block");
+    const isPresent = await spinner.count().then((c) => c > 0).catch(() => false);
+    if (isPresent) {
+      await spinner.first().waitFor({ state: "hidden", timeout: 10_000 }).catch(() => {});
+    }
+  }
+
   /**
    * Wait for the questionnaire page to be ready.
    */
@@ -1383,6 +1392,7 @@ export class QuestionnairePage {
         .isEnabled()
         .catch(() => false))
     ) {
+      await this.waitForSpinnerToHide();
       const count = await numberInput.count();
       if (count >= 2) {
         // Likely height + weight fields together (health_data_point)
@@ -1405,9 +1415,9 @@ export class QuestionnairePage {
       return true;
     }
 
-    // Text / textarea
+    // Text / textarea — exclude auth-gate fields (PIN, postcode, name fields)
     const textInput = this.page.locator(
-      'input[type="text"]:not([name="first_name"]):not([name="last_name"]):not([name="postcode"]), textarea',
+      'input[type="text"]:not([name="first_name"]):not([name="last_name"]):not([name="postcode"]):not([placeholder*="Pin"]):not([placeholder*="pin"]), textarea',
     );
     if (
       (await textInput.isVisible().catch(() => false)) &&
@@ -1416,6 +1426,7 @@ export class QuestionnairePage {
         .isEnabled()
         .catch(() => false))
     ) {
+      await this.waitForSpinnerToHide();
       await textInput.first().click();
       await textInput.first().clear();
       await textInput.first().fill("None");
@@ -1847,7 +1858,7 @@ export class QuestionnairePage {
     const popup = this.page
       .locator(".ant-modal-content")
       .filter({
-        hasText: /NHS111|NHS 111|GP referal/i,
+        hasText: /NHS111|NHS 111|GP referal|Call 999/i,
       })
       .first();
 
