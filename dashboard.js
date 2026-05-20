@@ -18,7 +18,10 @@ const upload = multer({ storage: storage });
 function resolveTraceViewerPath() {
   const candidates = [
     path.join(__dirname, "node_modules/playwright-core/lib/vite/traceViewer"),
-    path.join(__dirname, "node_modules/@playwright/test/node_modules/playwright-core/lib/vite/traceViewer"),
+    path.join(
+      __dirname,
+      "node_modules/@playwright/test/node_modules/playwright-core/lib/vite/traceViewer",
+    ),
   ];
   for (const c of candidates) {
     if (fs.existsSync(c)) return c;
@@ -28,7 +31,11 @@ function resolveTraceViewerPath() {
   if (fs.existsSync(pnpmBase)) {
     for (const dir of fs.readdirSync(pnpmBase)) {
       if (dir.startsWith("playwright-core@")) {
-        const p = path.join(pnpmBase, dir, "node_modules/playwright-core/lib/vite/traceViewer");
+        const p = path.join(
+          pnpmBase,
+          dir,
+          "node_modules/playwright-core/lib/vite/traceViewer",
+        );
         if (fs.existsSync(p)) return p;
       }
     }
@@ -72,11 +79,118 @@ function readPharmacies() {
 
 let _testListCache = null;
 let _testListCacheAt = 0;
+let _pharmacyRepoTestCaseCache = null;
+let _pharmacyRepoTestCaseCacheAt = 0;
 const TEST_LIST_TTL_MS = 30_000;
 let lastRunStartTime = 0;
 const activeProcs = new Map();
 const completedRunIds = new Set();
 const MAX_RUN_MS = 10 * 60 * 1000;
+
+const PHARMACY_TEST_CASES_FALLBACK = [
+  {
+    id: "TC-01",
+    title: "F1: sign_up -> questionnaire_submit -> appointment_booking",
+    fullTitle:
+      "User Journey Flows > F1: sign_up -> questionnaire_submit -> appointment_booking",
+    file: "tests/e2e/user-journey-flows.spec.ts",
+    line: 1,
+    source: "pharmacy-e2e-tests-fallback",
+  },
+  {
+    id: "TC-02",
+    title: "F2: questionnaire_submit -> sign_up -> appointment_booking",
+    fullTitle:
+      "User Journey Flows > F2: questionnaire_submit -> sign_up -> appointment_booking",
+    file: "tests/e2e/user-journey-flows.spec.ts",
+    line: 1,
+    source: "pharmacy-e2e-tests-fallback",
+  },
+  {
+    id: "TC-03",
+    title: "F3: questionnaire_submit -> appointment_booking -> sign_up",
+    fullTitle:
+      "User Journey Flows > F3: questionnaire_submit -> appointment_booking -> sign_up",
+    file: "tests/e2e/user-journey-flows.spec.ts",
+    line: 1,
+    source: "pharmacy-e2e-tests-fallback",
+  },
+  {
+    id: "TC-04",
+    title: "CR1: Shingles — NHS",
+    fullTitle: "Condition Rules Flows > CR1: Shingles — NHS",
+    file: "tests/e2e/condition-rules-flows.spec.ts",
+    line: 1,
+    source: "pharmacy-e2e-tests-fallback",
+  },
+  {
+    id: "TC-05",
+    title: "CR2: Shingles — Private",
+    fullTitle: "Condition Rules Flows > CR2: Shingles — Private",
+    file: "tests/e2e/condition-rules-flows.spec.ts",
+    line: 1,
+    source: "pharmacy-e2e-tests-fallback",
+  },
+  {
+    id: "TC-06",
+    title: "CR3: Weight management — Private",
+    fullTitle: "Condition Rules Flows > CR3: Weight management — Private",
+    file: "tests/e2e/condition-rules-flows.spec.ts",
+    line: 1,
+    source: "pharmacy-e2e-tests-fallback",
+  },
+  {
+    id: "TC-07",
+    title: "CR4: Erectile dysfunction — Lifestyle (Private)",
+    fullTitle:
+      "Condition Rules Flows > CR4: Erectile dysfunction — Lifestyle (Private)",
+    file: "tests/e2e/condition-rules-flows.spec.ts",
+    line: 1,
+    source: "pharmacy-e2e-tests-fallback",
+  },
+  {
+    id: "TC-08",
+    title: "B1: appointment type Video",
+    fullTitle: "Booking Appointment Flows > B1: appointment type Video",
+    file: "tests/e2e/booking-flows.spec.ts",
+    line: 1,
+    source: "pharmacy-e2e-tests-fallback",
+  },
+  {
+    id: "TC-09",
+    title: "B2: appointment type Phone call",
+    fullTitle: "Booking Appointment Flows > B2: appointment type Phone call",
+    file: "tests/e2e/booking-flows.spec.ts",
+    line: 1,
+    source: "pharmacy-e2e-tests-fallback",
+  },
+  {
+    id: "TC-010",
+    title: "B3: appointment type Face to Face",
+    fullTitle: "Booking Appointment Flows > B3: appointment type Face to Face",
+    file: "tests/e2e/booking-flows.spec.ts",
+    line: 1,
+    source: "pharmacy-e2e-tests-fallback",
+  },
+  {
+    id: "TC-011",
+    title: "P1: select existing saved card (fallback to new card if none)",
+    fullTitle:
+      "Payment Flows > P1: select existing saved card (fallback to new card if none)",
+    file: "tests/e2e/payment-flows.spec.ts",
+    line: 1,
+    source: "pharmacy-e2e-tests-fallback",
+  },
+  {
+    id: "TC-012",
+    title: "P2: create a new card and use it to confirm payment",
+    fullTitle:
+      "Payment Flows > P2: create a new card and use it to confirm payment",
+    file: "tests/e2e/payment-flows.spec.ts",
+    line: 1,
+    source: "pharmacy-e2e-tests-fallback",
+  },
+];
 
 function flattenSuites(suites, parentTitles = [], depth = 0) {
   const out = [];
@@ -134,6 +248,81 @@ function listTests() {
       }
     });
   });
+}
+
+function listTestsFromRepo(repoDir) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(
+      "pnpm",
+      ["exec", "playwright", "test", "--list", "--reporter=json"],
+      { cwd: repoDir, env: { ...process.env } },
+    );
+    let out = "";
+    let err = "";
+    proc.stdout.on("data", (c) => (out += c.toString()));
+    proc.stderr.on("data", (c) => (err += c.toString()));
+    proc.on("close", () => {
+      try {
+        const json = JSON.parse(out);
+        const all = flattenSuites(json.suites || []);
+        const seen = new Set();
+        const unique = [];
+        for (const t of all) {
+          const key = `${t.file}::${t.fullTitle}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            unique.push(t);
+          }
+        }
+        resolve(unique);
+      } catch (e) {
+        reject(
+          new Error(
+            `Failed to list tests from ${repoDir}: ${e.message}\n${err}`,
+          ),
+        );
+      }
+    });
+  });
+}
+
+async function listPharmacyRepoTestCases() {
+  if (
+    _pharmacyRepoTestCaseCache &&
+    Date.now() - _pharmacyRepoTestCaseCacheAt < TEST_LIST_TTL_MS
+  ) {
+    return _pharmacyRepoTestCaseCache;
+  }
+
+  const candidates = [
+    process.env.PHARMACY_E2E_REPO,
+    path.resolve(__dirname, "../pharmacy-e2e-tests"),
+  ].filter(Boolean);
+
+  let repoDir = null;
+  for (const dir of candidates) {
+    if (fs.existsSync(dir) && fs.existsSync(path.join(dir, "package.json"))) {
+      repoDir = dir;
+      break;
+    }
+  }
+  if (!repoDir) {
+    _pharmacyRepoTestCaseCache = PHARMACY_TEST_CASES_FALLBACK;
+    _pharmacyRepoTestCaseCacheAt = Date.now();
+    return _pharmacyRepoTestCaseCache;
+  }
+
+  try {
+    const tests = await listTestsFromRepo(repoDir);
+    _pharmacyRepoTestCaseCache = tests.map((t) => ({
+      ...t,
+      source: "pharmacy-e2e-tests",
+    }));
+  } catch (_) {
+    _pharmacyRepoTestCaseCache = PHARMACY_TEST_CASES_FALLBACK;
+  }
+  _pharmacyRepoTestCaseCacheAt = Date.now();
+  return _pharmacyRepoTestCaseCache;
 }
 
 // ── Flow configs ──────────────────────────────────────────────────────────────
@@ -736,6 +925,15 @@ app.get("/api/tests", async (_req, res) => {
   }
 });
 
+app.get("/api/pharmacy-test-cases", async (_req, res) => {
+  try {
+    const tests = await listPharmacyRepoTestCases();
+    res.json(tests);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post("/api/upload-links", (req, res) => {
   upload.single("file")(req, res, (err) => {
     if (err) {
@@ -879,7 +1077,6 @@ app.get("/api/page-meta", async (req, res) => {
   }
 });
 
-
 // SSE stream for running tests
 app.get("/api/run-tests", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
@@ -946,10 +1143,10 @@ app.get("/api/run-tests", (req, res) => {
       const td = JSON.parse(
         Buffer.from(tdOverridesB64, "base64").toString("utf8"),
       );
-      const u  = td.user     || {};
-      const p  = td.payment  || {};
+      const u = td.user || {};
+      const p = td.payment || {};
       const sh = td.shipping || {};
-      const a  = td.appointment || {};
+      const a = td.appointment || {};
       const set = (key, val) => {
         if (val != null && String(val).trim() !== "") tdEnv[key] = String(val);
       };
@@ -1183,7 +1380,9 @@ function dirSizeBytes(dirPath) {
       if (e.isDirectory()) {
         total += dirSizeBytes(full);
       } else {
-        try { total += fs.statSync(full).size; } catch (_) {}
+        try {
+          total += fs.statSync(full).size;
+        } catch (_) {}
       }
     }
   } catch (_) {}
@@ -1194,7 +1393,11 @@ function collectResultFiles(dirPath) {
   const files = [];
   function scan(d) {
     let entries;
-    try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch (_) { return; }
+    try {
+      entries = fs.readdirSync(d, { withFileTypes: true });
+    } catch (_) {
+      return;
+    }
     for (const e of entries) {
       const full = path.join(d, e.name);
       if (e.isDirectory()) {
@@ -1203,8 +1406,14 @@ function collectResultFiles(dirPath) {
         if (e.name.endsWith(".webm") || e.name === "trace.zip") {
           try {
             const stat = fs.statSync(full);
-            const url = "/" + path.relative(__dirname, full).replace(/\\/g, "/");
-            files.push({ name: e.name, url, size: stat.size, type: e.name.endsWith(".webm") ? "video" : "trace" });
+            const url =
+              "/" + path.relative(__dirname, full).replace(/\\/g, "/");
+            files.push({
+              name: e.name,
+              url,
+              size: stat.size,
+              type: e.name.endsWith(".webm") ? "video" : "trace",
+            });
           } catch (_) {}
         }
       }
@@ -1224,7 +1433,9 @@ app.get("/api/results", (_req, res) => {
       if (!e.isDirectory()) continue;
       const full = path.join(dir, e.name);
       let mtime = 0;
-      try { mtime = fs.statSync(full).mtimeMs; } catch (_) {}
+      try {
+        mtime = fs.statSync(full).mtimeMs;
+      } catch (_) {}
       const files = collectResultFiles(full);
       const totalSize = dirSizeBytes(full);
       results.push({ name: e.name, path: full, mtime, totalSize, files });

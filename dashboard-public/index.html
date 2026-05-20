@@ -2307,8 +2307,11 @@
       let filterText = "";
       let activeJourneyFilter = "lifestyle"; // tracks TD panel journey type select
       let visibleTestCases = []; // set by renderTree() — used by Run All
-      let queuedLinks = []; // array of { url, conditionName, tag, loading, flowMode, dob?, dobDay?, dobMonth?, dobYear?, pin? }
       let flowMode = "non-logged"; // "non-logged" | "logged-in"
+      let queuedLinks = []; // array of { url, conditionName, tag, loading }
+      let conditionMatchContext = null; // { conditionName, hints[] } when link-based matching is active
+      let conditionMatchedGroups = []; // [{ key, label, hints, tests[] }]
+      let pharmacyExternalCasesCache = null;
 
       async function fetchPageMeta(url) {
         try {
@@ -2692,7 +2695,7 @@
       const JOURNEY_LABELS = {
         nhs: "NHS",
         private: "PRIVATE",
-        lifestyle: "Test Scenario",
+        lifestyle: "JOURNEY FLOW",
         eligibility: "ELIGIBILITY",
         user_journey: "USER JOURNEY",
         booking: "BOOKING",
@@ -2729,10 +2732,6 @@
         return "lifestyle";
       }
 
-      function toCaseId(index) {
-        return `TC-${String(index + 1).padStart(3, "0")}`;
-      }
-
       function escapeHtml(text) {
         return String(text ?? "")
           .replace(/&/g, "&amp;")
@@ -2750,6 +2749,29 @@
           .trim();
         if (normalized) return normalized;
         return (file || "").split("/").pop() || "General Flow";
+      }
+
+      function deriveSuiteLabel(file) {
+        const f = String(file || "").toLowerCase();
+        if (f.includes("user-journey-flows.spec")) return "User Journey Flows";
+        if (f.includes("condition-rules-flows.spec")) return "Condition Rules Flows";
+        if (f.includes("booking-flows.spec")) return "Booking Appointment Flows";
+        if (f.includes("payment-flows.spec")) return "Payment Flows";
+        if (f.includes("nhs-flows.spec")) return "NHS Flows";
+        if (f.includes("private-flows.spec")) return "Private Flows";
+        if (f.includes("eligibility.spec")) return "Eligibility Flows";
+        return deriveCategory("", file);
+      }
+
+      function isHiddenInitialFlowTest(testItem) {
+        const f = String(testItem?.file || "").toLowerCase();
+        const base = f.split("/").pop() || f;
+        return (
+          f.includes("pasted-link-flow.spec.ts") ||
+          f.includes("yopmail-assessment-flow.spec.ts") ||
+          base === "pasted-link-flow.spec.ts" ||
+          base === "yopmail-assessment-flow.spec.ts"
+        );
       }
 
       function deriveTestDescription(testCase) {
@@ -2859,6 +2881,8 @@
       }
 
       function applyJourneyFilter(journeys) {
+        conditionMatchContext = null;
+        conditionMatchedGroups = [];
         if (!Array.isArray(journeys) || journeys.length === 0) {
           allTests = [];
           renderTree(allTests);
@@ -2870,6 +2894,166 @@
         );
         renderTree(allTests);
         setStatus("idle", `${allTests.length} related test(s) loaded`);
+      }
+
+      function tokenizeConditionText(text) {
+        const stopWords = new Set([
+          "and", "the", "for", "with", "from", "this", "that", "flow", "test",
+          "case", "condition", "conditions", "assessment", "journey", "link",
+        ]);
+        return String(text || "")
+          .toLowerCase()
+          .replace(/[_/]+/g, " ")
+          .replace(/[^a-z0-9 -]/g, " ")
+          .split(/[\s-]+/)
+          .map((s) => s.trim())
+          .filter((s) => s.length >= 3 && !stopWords.has(s));
+      }
+
+      function extractConditionHints(analysis, meta, rawUrl) {
+        const candidates = new Set();
+        const add = (val) => {
+          if (!val) return;
+          const text = String(val).trim();
+          if (text) candidates.add(text);
+        };
+
+        add(meta?.conditionName);
+        const payload = analysis?.conditionTokenPayload || {};
+        [
+          "condition",
+          "conditionName",
+          "condition_name",
+          "conditionSlug",
+          "condition_slug",
+          "slug",
+          "name",
+          "title",
+          "url",
+          "path",
+        ].forEach((k) => add(payload?.[k]));
+
+        try {
+          const parsed = new URL(analysis?.resolved || rawUrl || "");
+          const parts = parsed.pathname.split("/").filter(Boolean);
+          const idx = parts.findIndex((p) => p.toLowerCase() === "conditions");
+          if (idx >= 0 && parts[idx + 1]) add(parts[idx + 1]);
+        } catch (_) {}
+
+        const keywords = Array.from(candidates).flatMap((v) =>
+          tokenizeConditionText(v),
+        );
+        return Array.from(new Set(keywords));
+      }
+
+      function scoreTestForConditionHints(testItem, hints) {
+        if (!Array.isArray(hints) || hints.length === 0) return 0;
+        const hay = `${testItem?.title || ""} ${testItem?.fullTitle || ""} ${testItem?.file || ""}`.toLowerCase();
+        let score = 0;
+        for (const hint of hints) {
+          if (!hint) continue;
+          if (hay.includes(hint)) score += hint.length >= 8 ? 3 : 2;
+        }
+        return score;
+      }
+
+      async function loadPharmacyExternalCases() {
+        if (pharmacyExternalCasesCache) return pharmacyExternalCasesCache;
+        try {
+          const res = await fetch("/api/pharmacy-test-cases");
+          if (!res.ok) throw new Error("failed");
+          const data = await res.json();
+          pharmacyExternalCasesCache = Array.isArray(data) ? data : [];
+        } catch (_) {
+          pharmacyExternalCasesCache = [];
+        }
+        return pharmacyExternalCasesCache;
+      }
+
+      async function applyLinkMatchedTests({ journeys = [], analysis = null, meta = null, rawUrl = "" } = {}) {
+        const conditionHints = extractConditionHints(analysis, meta, rawUrl);
+        conditionMatchContext = {
+          conditionName: meta?.conditionName || null,
+          hints: conditionHints,
+        };
+        const pharmacyCases = await loadPharmacyExternalCases();
+        const sourceCases =
+          Array.isArray(pharmacyCases) && pharmacyCases.length > 0
+            ? pharmacyCases
+            : allTestsMaster;
+        const visibleSourceCases = sourceCases.filter(
+          (t) => !isHiddenInitialFlowTest(t),
+        );
+        const scored = visibleSourceCases
+          .map((t) => ({ t, score: scoreTestForConditionHints(t, conditionHints) }))
+          .sort((a, b) => b.score - a.score);
+
+        const conditionMatched = scored.filter((x) => x.score > 0).map((x) => x.t);
+        let matched = [];
+
+        if (conditionMatched.length > 0) {
+          if (Array.isArray(journeys) && journeys.length > 0) {
+            const intersected = conditionMatched.filter((t) =>
+              journeys.includes(getJourneyFromTest(t)),
+            );
+            matched = intersected.length > 0 ? intersected : conditionMatched;
+          } else {
+            matched = conditionMatched;
+          }
+        } else if (Array.isArray(journeys) && journeys.length > 0) {
+          matched = visibleSourceCases.filter((t) =>
+            journeys.includes(getJourneyFromTest(t)),
+          );
+        }
+
+        if (matched.length === 0) {
+          matched = visibleSourceCases.slice(0, 20);
+        }
+
+        const derivedLabel =
+          (meta?.conditionName && String(meta.conditionName).trim()) ||
+          (conditionHints[0] ? conditionHints[0].toUpperCase() : "RELATED");
+        const groupKey = String(derivedLabel).toLowerCase();
+        const existingIdx = conditionMatchedGroups.findIndex(
+          (g) => g.key === groupKey,
+        );
+        if (existingIdx >= 0) {
+          const existing = conditionMatchedGroups[existingIdx];
+          const merged = [...existing.tests];
+          const seen = new Set(
+            merged.map((t) => `${t.file || ""}::${t.fullTitle || t.title || ""}`),
+          );
+          for (const t of matched) {
+            const k = `${t.file || ""}::${t.fullTitle || t.title || ""}`;
+            if (!seen.has(k)) {
+              seen.add(k);
+              merged.push(t);
+            }
+          }
+          conditionMatchedGroups[existingIdx] = {
+            ...existing,
+            hints: Array.from(new Set([...(existing.hints || []), ...conditionHints])),
+            tests: merged,
+          };
+        } else {
+          conditionMatchedGroups.push({
+            key: groupKey,
+            label: `${derivedLabel} TEST CASES`,
+            hints: conditionHints,
+            tests: matched,
+          });
+        }
+
+        allTests = matched;
+        renderTree(allTests);
+        if (matched.length === 0) {
+          setStatus("idle", "No matching test cases found for this link");
+          return;
+        }
+        const hintText = conditionHints.length
+          ? `condition keywords: ${conditionHints.slice(0, 5).join(", ")}`
+          : "journey detection only";
+        setStatus("idle", `${matched.length} matching test case(s) loaded (${hintText})`);
       }
 
       async function resolveHealthyaLink(rawUrl) {
@@ -2940,7 +3124,15 @@
             }
           }
 
-          applyJourneyFilter(analysis.suggestedJourneys || []);
+          const pageMeta = await fetchPageMeta(analysis.resolved || link).catch(
+            () => ({}),
+          );
+          await applyLinkMatchedTests({
+            journeys: analysis.suggestedJourneys || [],
+            analysis,
+            meta: pageMeta,
+            rawUrl: analysis.resolved || link,
+          });
           browserUrl.value = analysis.detected?.currentUrl || analysis.resolved;
           return analysis;
         } catch (_) {
@@ -2958,8 +3150,12 @@
           customLinkInput.value = resolved.resolved;
           updateClearButton();
           browserUrl.value = resolved.resolved;
-          allTests = [...allTestsMaster];
-          renderTree(allTests);
+          await applyLinkMatchedTests({
+            journeys: [],
+            analysis: healthyaAnalysis,
+            meta: {},
+            rawUrl: resolved.resolved,
+          });
           appendLog(`Resolved: ${resolved.resolved}`, "log-start");
           appendLog("Journey auto-detect skipped (fallback mode).", "log-warn");
           return healthyaAnalysis;
@@ -3436,12 +3632,14 @@
           '<div id="loading"><div class="spinner"></div>Loading tests…</div>';
         btnRunAll.disabled = true;
         setStatus("idle", `Loading tests for ${pharmacyName}…`);
+        conditionMatchContext = null;
+        conditionMatchedGroups = [];
         try {
           const res = await fetch(
             `/api/tests?project=${encodeURIComponent(pharmacyName)}`,
           );
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          allTests = await res.json();
+          allTests = (await res.json()).filter((t) => !isHiddenInitialFlowTest(t));
           allTestsMaster = [...allTests];
           setStatus(
             "idle",
@@ -3486,12 +3684,62 @@
 
         // Assign global IDs to all tests
         const allCases = tests.map((t, idx) => ({
-          id: toCaseId(idx),
+          id: t.id || `TC-${String(idx + 1).padStart(3, "0")}`,
           title: t.title || t.fullTitle || "Unnamed Test",
-          category: deriveCategory(t.fullTitle, t.file),
+          category: deriveSuiteLabel(t.file),
           journey: getJourneyFromTest(t),
           runnable: t,
         }));
+
+        if (conditionMatchedGroups.length > 0) {
+          let anyVisible = false;
+          for (const cg of conditionMatchedGroups) {
+            const groupCases = (cg.tests || []).map((t, idx) => ({
+              id: t.id || `TC-${String(idx + 1).padStart(3, "0")}`,
+              title: t.title || t.fullTitle || "Unnamed Test",
+              category: deriveSuiteLabel(t.file),
+              journey: getJourneyFromTest(t),
+              runnable: t,
+            }));
+            const cases = groupCases.filter((tc) => {
+              if (!query) return true;
+              return (
+                String(tc.id || "").toLowerCase().includes(query) ||
+                tc.title.toLowerCase().includes(query) ||
+                tc.category.toLowerCase().includes(query)
+              );
+            });
+            if (cases.length === 0) continue;
+            anyVisible = true;
+            visibleTestCases.push(...cases);
+
+            const group = document.createElement("div");
+            group.className = "journey-group open";
+            const hdr = document.createElement("div");
+            hdr.className = "journey-group-hdr";
+            hdr.innerHTML = `
+            <span class="jg-arrow">▶</span>
+            <span class="jg-icon">🧪</span>
+            <span class="jg-label">${escapeHtml(cg.label || "RELATED TEST CASES")}</span>
+          `;
+            hdr.addEventListener("click", () => group.classList.toggle("open"));
+
+            const body = document.createElement("div");
+            body.className = "journey-group-body";
+            cases.forEach((tc) =>
+              body.appendChild(functionalCaseNode(tc, { disableRun: true })),
+            );
+
+            group.appendChild(hdr);
+            group.appendChild(body);
+            treeEl.appendChild(group);
+          }
+          if (!anyVisible) {
+            treeEl.innerHTML =
+              '<div class="empty-state">No tests match your filter</div>';
+          }
+          return;
+        }
 
         let anyVisible = false;
 
@@ -3500,7 +3748,7 @@
             if (tc.journey !== journey) return false;
             if (!query) return true;
             return (
-              tc.id.toLowerCase().includes(query) ||
+              String(tc.id || "").toLowerCase().includes(query) ||
               tc.title.toLowerCase().includes(query) ||
               tc.category.toLowerCase().includes(query)
             );
@@ -3529,7 +3777,7 @@
                 file: tc.runnable.file,
                 line: tc.runnable.line,
                 grep: tc.runnable.fullTitle,
-                label: `${tc.id} ${tc.title}`,
+                label: `${tc.id ? `${tc.id} ` : ""}${tc.title}`,
                 journey: tc.journey,
                 _tdOverrides: tdOverrides,
               });
@@ -3552,23 +3800,25 @@
         }
       }
 
-      function functionalCaseNode(testCase) {
+      function functionalCaseNode(testCase, options = {}) {
+        const disableRun = !!options.disableRun;
         const runnable = testCase.runnable;
         const description = deriveTestDescription(testCase);
         const safeTitle = escapeHtml(testCase.title);
         const safeCategory = escapeHtml(testCase.category);
         const safeDescription = escapeHtml(description);
+        const safeId = escapeHtml(testCase.id || "");
         const div = document.createElement("div");
         div.className = "tree-test";
         div.innerHTML = `
-        <div class="tc-id">${testCase.id}</div>
+        <div class="tc-id">${safeId}</div>
         <div class="tc-info">
           <div class="tc-title">${safeTitle}</div>
           <div class="tc-cat">${safeCategory}</div>
         </div>
         <div class="tc-actions">
           ${
-            runnable
+            runnable && !disableRun
               ? `<button class="run-test-btn" data-key="test:${runnable.fullTitle || runnable.title}" title="Run this test case">▶</button>`
               : `<span class="run-test-btn" style="visibility:hidden"></span>`
           }
@@ -3576,14 +3826,14 @@
         </div>
       `;
         const runBtn = div.querySelector(".run-test-btn");
-        if (runBtn) {
+        if (runBtn && !disableRun) {
           runBtn.addEventListener("click", (e) => {
             e.stopPropagation();
             queueRun({
               file: runnable.file,
               line: runnable.line,
               grep: runnable.fullTitle,
-              label: `${testCase.id} ${testCase.title}`,
+              label: `${testCase.id ? `${testCase.id} ` : ""}${testCase.title}`,
               journey: testCase.journey,
               _tdOverrides: btoa(JSON.stringify(tdCollectForm())),
             });
@@ -3949,7 +4199,12 @@
             customLinkInput.value = analysis.resolved;
             browserUrl.value =
               analysis.detected?.currentUrl || analysis.resolved;
-            applyJourneyFilter(analysis.suggestedJourneys || []);
+            await applyLinkMatchedTests({
+              journeys: analysis.suggestedJourneys || [],
+              analysis,
+              meta: {},
+              rawUrl: analysis.resolved || link,
+            });
           } catch (_) {
             const resolved = await resolveHealthyaLink(link);
             customBaseURL = resolved.baseURL;
@@ -4062,7 +4317,16 @@
             customLinkInput.value = analysis.resolved;
             browserUrl.value =
               analysis.detected?.currentUrl || analysis.resolved;
-            applyJourneyFilter(analysis.suggestedJourneys || []);
+            const runMeta = {
+              conditionName: runs.get(runId)?.conditionName || null,
+              tag: runs.get(runId)?.tag || null,
+            };
+            await applyLinkMatchedTests({
+              journeys: analysis.suggestedJourneys || [],
+              analysis,
+              meta: runMeta,
+              rawUrl: analysis.resolved || rawLink,
+            });
             if (analysis.detected && analysis.detected.predictedJourney) {
               renderJourneyFlow(analysis.detected.predictedJourney);
               addRunLog(
@@ -4085,6 +4349,18 @@
             finalJourney = "lifestyle";
             customLinkInput.value = resolved.resolved;
             browserUrl.value = resolved.resolved;
+            await applyLinkMatchedTests({
+              journeys: [],
+              analysis: {
+                ...resolved,
+                conditionTokenPayload: null,
+              },
+              meta: {
+                conditionName: runs.get(runId)?.conditionName || null,
+                tag: runs.get(runId)?.tag || null,
+              },
+              rawUrl: resolved.resolved,
+            });
             resetJourneyFlowUI();
           }
         }
