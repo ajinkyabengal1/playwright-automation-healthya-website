@@ -1037,6 +1037,57 @@ export class QuestionnairePage {
     return false;
   }
 
+  /**
+   * Fills an Ant Design range picker (two-input DD-MM-YYYY date range).
+   * The start/end inputs carry `date-range="start"` / `date-range="end"` attrs.
+   */
+  private async fillRangeDatePickerByRule(): Promise<boolean> {
+    const rangePicker = this.page.locator(".ant-picker-range:visible").first();
+    if (!(await rangePicker.isVisible().catch(() => false))) return false;
+
+    const startInput = rangePicker.locator('input[date-range="start"]').first();
+    const endInput = rangePicker.locator('input[date-range="end"]').first();
+
+    if (!(await startInput.isVisible().catch(() => false))) return false;
+
+    const fillAntDDateInput = async (
+      input: ReturnType<Page["locator"]>,
+      dateStr: string, // "DD-MM-YYYY" literal, e.g. "01-01-2024"
+    ) => {
+      await input.scrollIntoViewIfNeeded().catch(() => {});
+      await input.click({ force: true }).catch(() => {});
+      await this.page.waitForTimeout(200);
+      // Clear any existing value via keyboard (AntD ignores fill on masked inputs)
+      await this.page.keyboard.press("Meta+A");
+      await this.page.keyboard.press("Control+A");
+      await this.page.keyboard.press("Backspace");
+      // Type with delay — AntD auto-inserts the "-" separators from digit input
+      await input.type(dateStr, { delay: 30 });
+      await this.page.waitForTimeout(200);
+    };
+
+    // Start: 01-01-2024
+    await fillAntDDateInput(startInput, "01-01-2024");
+    // AntD auto-advances focus to end input once all start digits are entered.
+    // Press Tab as an explicit fallback to make sure focus lands on end input.
+    await this.page.keyboard.press("Tab").catch(() => {});
+    await this.page.waitForTimeout(300);
+
+    // End: 01-06-2024 (5 months after start)
+    if (await endInput.isVisible().catch(() => false)) {
+      await fillAntDDateInput(endInput, "01-06-2024");
+    }
+
+    // Confirm and dismiss the calendar popup
+    await this.page.keyboard.press("Enter").catch(() => {});
+    await this.page.waitForTimeout(300);
+    await this.page.keyboard.press("Escape").catch(() => {});
+    await this.page.waitForTimeout(200);
+
+    const startVal = await startInput.inputValue().catch(() => "");
+    return startVal.replace(/[^\d]/g, "").length >= 8;
+  }
+
   private getActiveQuestionScope() {
     return this.page
       .locator(
@@ -1415,9 +1466,19 @@ export class QuestionnairePage {
       return true;
     }
 
+    // Range date picker (Ant Design) — must be checked BEFORE the generic text
+    // input handler, whose 'input[type="text"]' selector would otherwise match
+    // the range-picker's start/end inputs and fill them with "None".
+    const rangePicker = this.page.locator(".ant-picker-range:visible").first();
+    if (await rangePicker.isVisible().catch(() => false)) {
+      await this.waitForSpinnerToHide();
+      return this.fillRangeDatePickerByRule();
+    }
+
     // Text / textarea — exclude auth-gate fields (PIN, postcode, name fields)
+    // and range-picker date inputs (date-range attribute).
     const textInput = this.page.locator(
-      'input[type="text"]:not([name="first_name"]):not([name="last_name"]):not([name="postcode"]):not([placeholder*="Pin"]):not([placeholder*="pin"]), textarea',
+      'input[type="text"]:not([name="first_name"]):not([name="last_name"]):not([name="postcode"]):not([placeholder*="Pin"]):not([placeholder*="pin"]):not([date-range]), textarea',
     );
     if (
       (await textInput.isVisible().catch(() => false)) &&
@@ -1433,8 +1494,11 @@ export class QuestionnairePage {
       return true;
     }
 
-    // Date picker (Ant Design)
-    const datePicker = this.page.locator(".ant-picker input").first();
+    // Single date picker (Ant Design) — exclude range-picker inputs which are
+    // handled above by fillRangeDatePickerByRule.
+    const datePicker = this.page
+      .locator(".ant-picker:not(.ant-picker-range) input")
+      .first();
     if (await datePicker.isVisible().catch(() => false)) {
       return this.fillDateByRule(
         this.shouldUseRandomAnswers() ? this.randomDate() : "1990-01-01",
