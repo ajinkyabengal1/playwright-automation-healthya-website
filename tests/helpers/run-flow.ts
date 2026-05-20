@@ -34,6 +34,7 @@ type JourneyStep =
   | "thank_you"
   | "payment"
   | "success"
+  | "gender_not_supported"
   | "dead_end"
   | "unknown";
 
@@ -137,6 +138,19 @@ async function detectCurrentStep(page: Page): Promise<JourneyStep> {
     '[class*="booking-appointment-success"]',
   ];
   if (await hasVisibleIndicator(successIndicators)) return "success";
+
+  // Gender-specific ineligibility popup/page — should gracefully end flow.
+  const genderNotSupportedIndicators = [
+    "text=/this condition is not your gender specific/i",
+    "text=/you can close this window/i",
+    "text=/service unavailable/i",
+    "text=/private option isn.?t available currently/i",
+    "text=/you can safely close this page or return home/i",
+    'button:has-text("Back to Home")',
+    'a:has-text("Back to Home")',
+  ];
+  if (await hasVisibleIndicator(genderNotSupportedIndicators))
+    return "gender_not_supported";
 
   // Dead-end states: condition routed to self-care / referral / ineligible.
   const deadEndIndicators = [
@@ -275,6 +289,56 @@ async function detectCurrentStep(page: Page): Promise<JourneyStep> {
     return "questionnaire_submit";
 
   return "unknown";
+}
+
+async function handleTerminalBackToHomePopup(page: Page): Promise<boolean> {
+  const popupSignals = [
+    "text=/this condition is not your gender specific/i",
+    "text=/service unavailable/i",
+    "text=/private option isn.?t available currently/i",
+    "text=/you can safely close this page or return home/i",
+    "text=/you can close this window/i",
+    ".ant-modal-content",
+    ".ant-modal-header-expand h4",
+  ];
+
+  let hasSignal = false;
+  for (const sig of popupSignals) {
+    const visible = await page
+      .locator(sig)
+      .first()
+      .isVisible({ timeout: 300 })
+      .catch(() => false);
+    if (visible) {
+      hasSignal = true;
+      break;
+    }
+  }
+  if (!hasSignal) return false;
+
+  const modalBackBtn = page
+    .locator(
+      '.ant-modal-content button:has-text("Back to Home"), .ant-modal-content [role="button"]:has-text("Back to Home")',
+    )
+    .first();
+  const globalBackBtn = page
+    .locator(
+      'button:has-text("Back to Home"), a:has-text("Back to Home"), [role="button"]:has-text("Back to Home"), text=/back to home/i',
+    )
+    .first();
+
+  const modalVisible = await modalBackBtn
+    .isVisible({ timeout: 1000 })
+    .catch(() => false);
+  const backBtn = modalVisible ? modalBackBtn : globalBackBtn;
+  const visible = await backBtn.isVisible({ timeout: 1500 }).catch(() => false);
+  if (!visible) return false;
+
+  await backBtn.click({ timeout: 3000 }).catch(async () => {
+    await backBtn.click({ force: true, timeout: 3000 }).catch(() => {});
+  });
+  await page.waitForTimeout(300);
+  return true;
 }
 
 export async function runConditionFlow(
@@ -522,6 +586,14 @@ async function runConditionFlowImpl(
     if (flowCompleted) break;
     await page.waitForTimeout(1500);
 
+    if (await handleTerminalBackToHomePopup(page)) {
+      console.log(
+        '✔ Terminal popup detected — clicked "Back to Home" and ending flow',
+      );
+      flowCompleted = true;
+      break;
+    }
+
     let step = await detectCurrentStep(page);
     console.log(
       `🔍 [${config.name}] Iteration ${i + 1}: detected step = "${step}"`,
@@ -538,11 +610,34 @@ async function runConditionFlowImpl(
       );
     }
 
+    if (step === "gender_not_supported") {
+      console.log(
+        '✔ Gender-specific ineligibility popup detected — clicking "Back to Home" and ending flow',
+      );
+      const backBtn = page
+        .locator('button:has-text("Back to Home"), a:has-text("Back to Home")')
+        .first();
+      const visible = await backBtn.isVisible().catch(() => false);
+      if (visible) {
+        await backBtn.click().catch(() => {});
+      }
+      flowCompleted = true;
+      break;
+    }
+
     if (step === "unknown") {
       await page.waitForTimeout(500);
       step = await detectCurrentStep(page);
       if (step === "unknown") await page.waitForTimeout(1200);
       step = await detectCurrentStep(page);
+
+      if (step === "unknown" && (await handleTerminalBackToHomePopup(page))) {
+        console.log(
+          '✔ Terminal popup detected during unknown-step retry — clicked "Back to Home" and ending flow',
+        );
+        flowCompleted = true;
+        break;
+      }
 
       if (
         step === "unknown" &&
