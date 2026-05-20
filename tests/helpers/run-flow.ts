@@ -349,6 +349,44 @@ async function handleTerminalBackToHomePopup(page: Page): Promise<boolean> {
   return true;
 }
 
+async function gotoStartUrlWithRetry(page: Page, startUrl: string): Promise<void> {
+  const attempts: Array<{
+    waitUntil: "domcontentloaded" | "commit";
+    timeout: number;
+    label: string;
+  }> = [
+    { waitUntil: "domcontentloaded", timeout: 30_000, label: "domcontentloaded/30s" },
+    { waitUntil: "domcontentloaded", timeout: 45_000, label: "domcontentloaded/45s" },
+    { waitUntil: "commit", timeout: 20_000, label: "commit/20s" },
+  ];
+
+  let lastErr: unknown = null;
+  for (const a of attempts) {
+    try {
+      console.log(`↻ START_URL goto attempt (${a.label})`);
+      await page.goto(startUrl, { waitUntil: a.waitUntil, timeout: a.timeout });
+      return;
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log(`⚠ START_URL goto attempt failed (${a.label}): ${msg}`);
+    }
+  }
+
+  // Sometimes navigation timeout happens while browser already moved to the target.
+  const current = page.url();
+  if (current && /patient_flow/i.test(current)) {
+    console.log(
+      `⚠ START_URL navigation timed out but current URL is patient_flow (${current}) — continuing`,
+    );
+    return;
+  }
+
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error("START_URL navigation failed after retries");
+}
+
 export async function runConditionFlow(
   page: Page,
   config: FlowConfig,
@@ -435,7 +473,7 @@ async function runConditionFlowImpl(
 
   if (startUrl) {
     console.log(`✔ Direct patient flow start URL: ${startUrl}`);
-    await page.goto(startUrl, { waitUntil: "domcontentloaded" });
+    await gotoStartUrlWithRetry(page, startUrl);
     await checkLinkExpired(page);
     const landingDetected = await landingPage.isVisible();
     if (landingDetected) {
