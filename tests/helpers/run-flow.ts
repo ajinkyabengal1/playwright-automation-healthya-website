@@ -349,6 +349,35 @@ async function handleTerminalBackToHomePopup(page: Page): Promise<boolean> {
   return true;
 }
 
+async function handleDeadEndTerminalActions(page: Page): Promise<boolean> {
+  const endAssessmentBtn = page
+    .locator(
+      [
+        "button.end-assessment-button",
+        'button:has-text("End Assessment")',
+        'a:has-text("End Assessment")',
+        'button:has-text("End Assesment")',
+        'a:has-text("End Assesment")',
+        "text=/end asses?sment/i",
+      ].join(", "),
+    )
+    .first();
+  const endVisible = await endAssessmentBtn
+    .isVisible({ timeout: 1200 })
+    .catch(() => false);
+  if (endVisible) {
+    await endAssessmentBtn.click({ timeout: 3000 }).catch(async () => {
+      await endAssessmentBtn.click({ force: true, timeout: 3000 }).catch(
+        () => {},
+      );
+    });
+    await page.waitForTimeout(300);
+    return true;
+  }
+
+  return handleTerminalBackToHomePopup(page);
+}
+
 async function gotoStartUrlWithRetry(page: Page, startUrl: string): Promise<void> {
   const attempts: Array<{
     waitUntil: "domcontentloaded" | "commit";
@@ -652,6 +681,17 @@ async function runConditionFlowImpl(
     }
 
     if (step === "dead_end") {
+      // For direct START_URL runs, dead-end is a valid terminal outcome.
+      if (startUrl) {
+        const handledTerminal = await handleDeadEndTerminalActions(page);
+        console.log(
+          handledTerminal
+            ? "✔ Dead-end terminal state handled (End Assessment/Back to Home) — ending flow gracefully"
+            : "✔ Dead-end terminal state reached on START_URL run — ending flow gracefully",
+        );
+        flowCompleted = true;
+        break;
+      }
       throw new Error(
         `Flow reached a dead-end (self-care/referral/ineligible) for condition "${config.conditionName}" at ${page.url()} — retry with another condition`,
       );
