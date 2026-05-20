@@ -39,9 +39,15 @@ export class QuestionnairePage {
   /** Wait for any full-page spinner overlay to disappear before interacting. */
   private async waitForSpinnerToHide(): Promise<void> {
     const spinner = this.page.locator(".spinner-block");
-    const isPresent = await spinner.count().then((c) => c > 0).catch(() => false);
+    const isPresent = await spinner
+      .count()
+      .then((c) => c > 0)
+      .catch(() => false);
     if (isPresent) {
-      await spinner.first().waitFor({ state: "hidden", timeout: 10_000 }).catch(() => {});
+      await spinner
+        .first()
+        .waitFor({ state: "hidden", timeout: 10_000 })
+        .catch(() => {});
     }
   }
 
@@ -81,10 +87,20 @@ export class QuestionnairePage {
    */
   async answerAllQuestions() {
     for (let step = 0; step < this.MAX_QUESTIONS; step++) {
+      // Modal guard first: some "You've reached" overlays block all other UI.
+      if (await this.handleNHS111Popup()) {
+        if (this.endAssessmentClicked) {
+          console.log(
+            "[QuestionnairePage] End Assessment clicked from modal guard — stopping questionnaire flow",
+          );
+          return;
+        }
+      }
+
       if (this.endAssessmentClicked) {
         console.log(
           "[QuestionnairePage] End Assessment already clicked — stopping questionnaire flow",
-        );
+          );
         return;
       }
       await this.page.waitForTimeout(200);
@@ -1920,9 +1936,16 @@ export class QuestionnairePage {
     }
 
     const popup = this.page
-      .locator(".ant-modal-content")
+      .locator(
+        [
+          ".ant-modal-content",
+          ".ant-modal-child-content",
+          '[class*="ant-modal"]',
+        ].join(", "),
+      )
       .filter({
-        hasText: /NHS111|NHS 111|GP referal|Call 999/i,
+        hasText:
+          /NHS111|NHS 111|GP referal|GP referral|Call 999|You['’]ve reached|Here['’]s what we recommend|Service Unavailable/i,
       })
       .first();
 
@@ -1960,10 +1983,12 @@ export class QuestionnairePage {
       const endAssessmentButton = popup
         .locator(
           [
+            "button.end-assessment-button",
             'button:has-text("End Assessment")',
             'a:has-text("End Assessment")',
             'button:has-text("End Assesment")',
             'a:has-text("End Assesment")',
+            "text=/end asses?sment/i",
           ].join(", "),
         )
         .first();
@@ -1982,11 +2007,9 @@ export class QuestionnairePage {
       console.log("[QuestionnairePage] Clicking End Assessment button");
 
       await endAssessmentButton.scrollIntoViewIfNeeded().catch(() => {});
-      await endAssessmentButton
-        .click({ force: true })
-        .catch(async () => {
-          await endAssessmentButton.evaluate((el: HTMLElement) => el.click());
-        });
+      await endAssessmentButton.click({ force: true }).catch(async () => {
+        await endAssessmentButton.evaluate((el: HTMLElement) => el.click());
+      });
 
       this.endAssessmentClicked = true;
       await this.page.waitForTimeout(1500);
@@ -2209,7 +2232,27 @@ export class QuestionnairePage {
             el.closest(".questionnaire-answer-wrapper")?.textContent ?? "",
         )
         .catch(() => "");
-      const val = /height/i.test(nearText) ? "170" : "70";
+      const placeholder =
+        (await input.getAttribute("placeholder").catch(() => "")) || "";
+      const combined = (placeholder + " " + nearText).toLowerCase();
+      // Detect scale ranges: "rate from 1 to 10", "scale 1-10", "(1-10)", etc.
+      const rangeMatch =
+        combined.match(/from\s+(\d+)\s+to\s+(\d+)/i) ||
+        combined.match(/(?:scale|range|between)\s*(\d+)\s*[-–]\s*(\d+)/i) ||
+        combined.match(/\((\d+)\s*[-–]\s*(\d+)\)/);
+      let val: string;
+      if (rangeMatch) {
+        const min = parseInt(rangeMatch[1], 10);
+        const max = parseInt(rangeMatch[2], 10);
+        val =
+          !isNaN(min) && !isNaN(max) && max > min
+            ? Math.floor((min + max) / 2).toString()
+            : "5";
+      } else if (/height/i.test(combined)) {
+        val = "170";
+      } else {
+        val = "70";
+      }
       await input.scrollIntoViewIfNeeded().catch(() => {});
       await input.fill(val).catch(() => {});
       await input.blur().catch(() => {});
@@ -2239,10 +2282,11 @@ export class QuestionnairePage {
       const combined = (placeholder + " " + nearText).toLowerCase();
 
       let val = "None";
-      // Handle range/scale patterns: "scale 1-10", "range 1-10", "(1-10)"
+      // Handle range/scale patterns: "rate from 1 to 10", "scale 1-10", "(1-10)", etc.
       const rangeMatch =
-        combined.match(/(?:scale|range|between)\s*(\d+)\s*-\s*(\d+)/i) ||
-        combined.match(/\((\d+)\s*-\s*(\d+)\)/);
+        combined.match(/from\s+(\d+)\s+to\s+(\d+)/i) ||
+        combined.match(/(?:scale|range|between)\s*(\d+)\s*[-–]\s*(\d+)/i) ||
+        combined.match(/\((\d+)\s*[-–]\s*(\d+)\)/);
       if (rangeMatch) {
         const min = parseInt(rangeMatch[1], 10);
         const max = parseInt(rangeMatch[2], 10);
