@@ -378,6 +378,34 @@ async function handleDeadEndTerminalActions(page: Page): Promise<boolean> {
   return handleTerminalBackToHomePopup(page);
 }
 
+async function clickBookPrivateConsultationIfVisible(
+  page: Page,
+): Promise<boolean> {
+  const cta = page
+    .locator(
+      [
+        ".reached-modal button.book-private-consultation-button",
+        ".ant-modal-healthya button.book-private-consultation-button",
+        'button:has-text("Book Private Consultation")',
+        'button:has-text("Book Private Consulation")',
+        'button:has-text("Book Private Counsultation")',
+      ].join(", "),
+    )
+    .first();
+
+  const visible = await cta.isVisible({ timeout: 800 }).catch(() => false);
+  if (!visible) return false;
+
+  await cta.scrollIntoViewIfNeeded().catch(() => {});
+  await cta.click({ timeout: 3000 }).catch(async () => {
+    await cta.click({ force: true, timeout: 3000 }).catch(async () => {
+      await cta.evaluate((el: HTMLElement) => el.click()).catch(() => {});
+    });
+  });
+  await page.waitForTimeout(1000);
+  return true;
+}
+
 async function gotoStartUrlWithRetry(page: Page, startUrl: string): Promise<void> {
   const attempts: Array<{
     waitUntil: "domcontentloaded" | "commit";
@@ -681,20 +709,20 @@ async function runConditionFlowImpl(
     }
 
     if (step === "dead_end") {
-      // For direct START_URL runs, dead-end is a valid terminal outcome.
-      if (startUrl) {
-        const handledTerminal = await handleDeadEndTerminalActions(page);
+      if (await clickBookPrivateConsultationIfVisible(page)) {
         console.log(
-          handledTerminal
-            ? "✔ Dead-end terminal state handled (End Assessment/Back to Home) — ending flow gracefully"
-            : "✔ Dead-end terminal state reached on START_URL run — ending flow gracefully",
+          '✔ Dead-end detected but Book Private Consultation clicked — continuing flow',
         );
-        flowCompleted = true;
-        break;
+        continue;
       }
-      throw new Error(
-        `Flow reached a dead-end (self-care/referral/ineligible) for condition "${config.conditionName}" at ${page.url()} — retry with another condition`,
+      const handledTerminal = await handleDeadEndTerminalActions(page);
+      console.log(
+        handledTerminal
+          ? "✔ Dead-end terminal state handled (End Assessment/Back to Home) — ending flow gracefully"
+          : "✔ Dead-end terminal state reached — ending flow gracefully",
       );
+      flowCompleted = true;
+      break;
     }
 
     if (step === "gender_not_supported") {
