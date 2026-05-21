@@ -16,6 +16,7 @@ export class QuestionnairePage {
   private readonly answeredRuleKeys = new Set<string>();
   private retryAttempt = 0;
   private readonly answeredGenericQuestions = new Set<string>();
+  private readonly processedCheckboxGroups = new Set<string>();
   private endAssessmentClicked = false;
 
   constructor(page: Page) {
@@ -29,6 +30,7 @@ export class QuestionnairePage {
   resetAnswerState(): void {
     this.answeredRuleKeys.clear();
     this.answeredGenericQuestions.clear();
+    this.processedCheckboxGroups.clear();
     this.endAssessmentClicked = false;
   }
 
@@ -48,6 +50,31 @@ export class QuestionnairePage {
         .first()
         .waitFor({ state: "hidden", timeout: 10_000 })
         .catch(() => {});
+    }
+  }
+
+  /**
+   * After clicking a checkbox option (e.g. "Others"), a conditional follow-up
+   * text input may appear inline. Fill any such newly-visible empty text inputs
+   * before returning from the checkbox handler so the same pass handles them.
+   */
+  private async fillRevealedSubInputs(): Promise<void> {
+    await this.page.waitForTimeout(400);
+    const inputs = this.page.locator(
+      ".questionnaire-answer-wrapper:visible input[type='text']:not([disabled]):not([name='first_name']):not([name='last_name']):not([name='postcode']):not([placeholder*='Pin']):not([placeholder*='pin']):not([date-range])," +
+        " .questionnaire-answer-wrapper:visible textarea:not([disabled])",
+    );
+    const count = await inputs.count().catch(() => 0);
+    for (let i = 0; i < count; i++) {
+      const input = inputs.nth(i);
+      if (!(await input.isVisible().catch(() => false))) continue;
+      if (!(await input.isEnabled().catch(() => false))) continue;
+      const value = (await input.inputValue().catch(() => "")) ?? "";
+      if (value.trim()) continue;
+      await input.scrollIntoViewIfNeeded().catch(() => {});
+      await input.fill("Not applicable").catch(() => {});
+      await this.page.waitForTimeout(200);
+      console.log("[QuestionnairePage] Filled revealed sub-input after checkbox selection");
     }
   }
 
@@ -1381,43 +1408,67 @@ export class QuestionnairePage {
     );
     const labelCount = await checkboxLabels.count().catch(() => 0);
     if (labelCount > 0) {
-      if (this.shouldUseRandomAnswers()) {
-        const numToSelect = 1 + Math.floor(Math.random() * labelCount);
-        const indices = Array.from({ length: labelCount }, (_, i) => i)
-          .sort(() => Math.random() - 0.5)
-          .slice(0, numToSelect);
-        for (const i of indices) {
-          const label = checkboxLabels.nth(i);
-          if (await label.isVisible().catch(() => false)) {
-            await label.scrollIntoViewIfNeeded().catch(() => {});
-            await label.click({ force: true }).catch(() => {});
-            await this.page.waitForTimeout(200);
-          }
-        }
-      } else {
-        // Deterministic: prefer "None of the above", else first option
-        let selectedSafe = false;
-        for (let i = 0; i < labelCount; i++) {
-          const label = checkboxLabels.nth(i);
-          const text = await label.textContent().catch(() => "");
-          if (/none of the above/i.test(text ?? "")) {
+      // Fingerprint using first label text to avoid re-processing
+      const fpText =
+        (await checkboxLabels.nth(0).textContent().catch(() => ""))?.trim() ??
+        "cb-label";
+      if (!this.processedCheckboxGroups.has(fpText)) {
+        if (this.shouldUseRandomAnswers()) {
+          const numToSelect = 1 + Math.floor(Math.random() * labelCount);
+          const indices = Array.from({ length: labelCount }, (_, i) => i)
+            .sort(() => Math.random() - 0.5)
+            .slice(0, numToSelect);
+          for (const i of indices) {
+            const label = checkboxLabels.nth(i);
             if (await label.isVisible().catch(() => false)) {
               await label.scrollIntoViewIfNeeded().catch(() => {});
               await label.click({ force: true }).catch(() => {});
               await this.page.waitForTimeout(200);
-              selectedSafe = true;
-              break;
+            }
+          }
+        } else {
+          // Deterministic: prefer "None of the above", then non-Others, else first
+          let selectedSafe = false;
+          for (let i = 0; i < labelCount; i++) {
+            const label = checkboxLabels.nth(i);
+            const text = await label.textContent().catch(() => "");
+            if (/none of the above/i.test(text ?? "")) {
+              if (await label.isVisible().catch(() => false)) {
+                await label.scrollIntoViewIfNeeded().catch(() => {});
+                await label.click({ force: true }).catch(() => {});
+                await this.page.waitForTimeout(200);
+                selectedSafe = true;
+                break;
+              }
+            }
+          }
+          if (!selectedSafe) {
+            for (let i = 0; i < labelCount; i++) {
+              const label = checkboxLabels.nth(i);
+              const text = (
+                (await label.textContent().catch(() => "")) ?? ""
+              ).trim();
+              if (/^others?$/i.test(text)) continue;
+              if (await label.isVisible().catch(() => false)) {
+                await label.scrollIntoViewIfNeeded().catch(() => {});
+                await label.click({ force: true }).catch(() => {});
+                await this.page.waitForTimeout(200);
+                selectedSafe = true;
+                break;
+              }
+            }
+          }
+          if (!selectedSafe) {
+            const first = checkboxLabels.nth(0);
+            if (await first.isVisible().catch(() => false)) {
+              await first.scrollIntoViewIfNeeded().catch(() => {});
+              await first.click({ force: true }).catch(() => {});
+              await this.page.waitForTimeout(200);
             }
           }
         }
-        if (!selectedSafe) {
-          const first = checkboxLabels.nth(0);
-          if (await first.isVisible().catch(() => false)) {
-            await first.scrollIntoViewIfNeeded().catch(() => {});
-            await first.click({ force: true }).catch(() => {});
-            await this.page.waitForTimeout(200);
-          }
-        }
+        this.processedCheckboxGroups.add(fpText);
+        await this.fillRevealedSubInputs();
       }
       return true;
     }
@@ -1445,6 +1496,7 @@ export class QuestionnairePage {
           .catch(() => {});
         await this.page.waitForTimeout(200);
       }
+      await this.fillRevealedSubInputs();
       return true;
     }
 
@@ -2123,19 +2175,31 @@ export class QuestionnairePage {
       const group = checkboxGroups.nth(i);
       if (!(await group.isVisible().catch(() => false))) continue;
 
+      // Use a fingerprint (first option text) to prevent re-processing this
+      // group when the custom component's checked CSS class isn't detected.
+      const options = group.locator(
+        ".ant-checkbox-wrapper:not(.ant-checkbox-wrapper-disabled)",
+      );
+      const optCount = await options.count().catch(() => 0);
+      if (!optCount) continue;
+
+      const firstOptionText =
+        (await options.nth(0).textContent().catch(() => ""))?.trim() ??
+        `group-${i}`;
+      if (this.processedCheckboxGroups.has(firstOptionText)) continue;
+
       const checkedCount = await group
         .locator(
           ".ant-checkbox-wrapper-checked, input[type='checkbox']:checked",
         )
         .count()
         .catch(() => 0);
-      if (checkedCount > 0) continue;
-
-      const options = group.locator(
-        ".ant-checkbox-wrapper:not(.ant-checkbox-wrapper-disabled)",
-      );
-      const optCount = await options.count().catch(() => 0);
-      if (!optCount) continue;
+      if (checkedCount > 0) {
+        // Mark as processed so we don't re-click it, but still fill sub-inputs
+        this.processedCheckboxGroups.add(firstOptionText);
+        await this.fillRevealedSubInputs();
+        continue;
+      }
 
       // Pick checkbox(es) based on flow type
       if (this.shouldUseRandomAnswers()) {
@@ -2154,8 +2218,11 @@ export class QuestionnairePage {
           }
         }
       } else {
-        // Deterministic: prefer "None of the above", else first option
+        // Deterministic: prefer "None of the above", then a non-"Others" option,
+        // else fall back to first available option.
         let selectedSafe = false;
+
+        // Pass 1: "None of the above" / "None" exact
         for (let j = 0; j < optCount; j++) {
           const opt = options.nth(j);
           const text = await opt.textContent().catch(() => "");
@@ -2171,6 +2238,28 @@ export class QuestionnairePage {
             }
           }
         }
+
+        // Pass 2: prefer any option that is NOT "Others"/"Other" (which triggers sub-inputs)
+        if (!selectedSafe) {
+          for (let j = 0; j < optCount; j++) {
+            const opt = options.nth(j);
+            const text = (
+              (await opt.textContent().catch(() => "")) ?? ""
+            ).trim();
+            if (/^others?$/i.test(text)) continue; // skip "Other"/"Others"
+            if (await opt.isVisible().catch(() => false)) {
+              await opt.scrollIntoViewIfNeeded().catch(() => {});
+              await opt.click({ force: true }).catch(async () => {
+                await opt.evaluate((el: HTMLElement) => el.click());
+              });
+              await this.page.waitForTimeout(300);
+              selectedSafe = true;
+              break;
+            }
+          }
+        }
+
+        // Pass 3: fall back to first option (may be "Others" — sub-inputs handled below)
         if (!selectedSafe) {
           const first = options.nth(0);
           if (await first.isVisible().catch(() => false)) {
@@ -2182,6 +2271,11 @@ export class QuestionnairePage {
           }
         }
       }
+
+      // Mark this group as processed so it's not re-clicked on subsequent iterations
+      this.processedCheckboxGroups.add(firstOptionText);
+      // Immediately fill any conditional sub-inputs revealed by the selection
+      await this.fillRevealedSubInputs();
       return true;
     }
 
@@ -2197,6 +2291,7 @@ export class QuestionnairePage {
       await cb.scrollIntoViewIfNeeded().catch(() => {});
       await cb.check({ force: true }).catch(() => {});
       await this.page.waitForTimeout(300);
+      await this.fillRevealedSubInputs();
       return true;
     }
 
