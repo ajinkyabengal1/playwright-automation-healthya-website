@@ -1040,6 +1040,48 @@ export class QuestionnairePage {
       if ((await dateInput.isEditable().catch(() => false)) === false) continue;
 
       await dateInput.scrollIntoViewIfNeeded().catch(() => {});
+
+      // For AntD date picker (inside .ant-picker), try dropdown selection first
+      const insideAntPicker = await dateInput
+        .evaluate((el: Element) => el.closest(".ant-picker") !== null)
+        .catch(() => false);
+
+      if (insideAntPicker) {
+        console.log(`[QuestionnairePage] AntD single date picker: attempting dropdown selection`);
+        await dateInput.click({ force: true }).catch(() => {});
+        await this.page.waitForTimeout(400);
+
+        const dropdown = this.page.locator(".ant-picker-dropdown:visible");
+        if (await dropdown.isVisible().catch(() => false)) {
+          const enabledCells = dropdown.locator(".ant-picker-cell-in-view:not(.ant-picker-cell-disabled)");
+          const cellCount = await enabledCells.count().catch(() => 0);
+          
+          const cells = cellCount > 0 ? enabledCells : dropdown.locator(".ant-picker-cell:not(.ant-picker-cell-disabled)");
+          const count = await cells.count().catch(() => 0);
+
+          if (count > 0) {
+            const firstCell = cells.first();
+            await firstCell.scrollIntoViewIfNeeded().catch(() => {});
+            await firstCell.click({ force: true }).catch(() => {});
+            await this.page.waitForTimeout(400);
+
+            if (await dropdown.isVisible().catch(() => false)) {
+              await this.page.keyboard.press("Enter").catch(() => {});
+              await this.page.waitForTimeout(200);
+              await this.page.keyboard.press("Escape").catch(() => {});
+              await this.page.waitForTimeout(200);
+            }
+
+            const afterVal = await dateInput.inputValue().catch(() => "");
+            if (afterVal.trim().length > 0) {
+              console.log(`[QuestionnairePage] Single date picker filled successfully via dropdown: "${afterVal}"`);
+              return true;
+            }
+          }
+        }
+        console.log(`[QuestionnairePage] Dropdown selection failed/not applicable, falling back to manual typing`);
+      }
+
       await dateInput.click({ force: true }).catch(() => {});
 
       for (const candidate of candidateValues) {
@@ -1092,6 +1134,69 @@ export class QuestionnairePage {
     const endInput = rangePicker.locator('input[date-range="end"]').first();
 
     if (!(await startInput.isVisible().catch(() => false))) return false;
+
+    console.log("[QuestionnairePage] Range picker: attempting dropdown selection");
+    await startInput.click({ force: true }).catch(() => {});
+    await this.page.waitForTimeout(400);
+
+    const dropdown = this.page.locator(".ant-picker-dropdown:visible");
+    let dropdownSuccess = false;
+
+    if (await dropdown.isVisible().catch(() => false)) {
+      // Look for enabled cells: in-view cells that are NOT disabled.
+      const enabledCells = dropdown.locator(".ant-picker-cell-in-view:not(.ant-picker-cell-disabled)");
+      const cellCount = await enabledCells.count().catch(() => 0);
+      
+      // If we don't have enough in-view cells, fall back to any enabled cells
+      const cells = cellCount > 0 ? enabledCells : dropdown.locator(".ant-picker-cell:not(.ant-picker-cell-disabled)");
+      const count = await cells.count().catch(() => 0);
+
+      if (count > 0) {
+        console.log(`[QuestionnairePage] Range picker: found ${count} enabled calendar cells`);
+        
+        // Click the first enabled cell
+        const firstCell = cells.first();
+        await firstCell.scrollIntoViewIfNeeded().catch(() => {});
+        await firstCell.click({ force: true }).catch(() => {});
+        await this.page.waitForTimeout(500);
+
+        // Click the last enabled cell. Relocate in case dropdown refreshed/updated.
+        const updatedCells = dropdown.locator(cellCount > 0 ? ".ant-picker-cell-in-view:not(.ant-picker-cell-disabled)" : ".ant-picker-cell:not(.ant-picker-cell-disabled)");
+        const updatedCount = await updatedCells.count().catch(() => 0);
+        
+        if (updatedCount > 0) {
+          const lastCell = updatedCells.last();
+          await lastCell.scrollIntoViewIfNeeded().catch(() => {});
+          await lastCell.click({ force: true }).catch(() => {});
+          await this.page.waitForTimeout(500);
+        } else if (count > 1) {
+          const lastCell = cells.last();
+          await lastCell.click({ force: true }).catch(() => {});
+          await this.page.waitForTimeout(500);
+        }
+
+        // Close the calendar popup if it's still open
+        if (await dropdown.isVisible().catch(() => false)) {
+          await this.page.keyboard.press("Enter").catch(() => {});
+          await this.page.waitForTimeout(200);
+          await this.page.keyboard.press("Escape").catch(() => {});
+          await this.page.waitForTimeout(200);
+        }
+
+        const startVal = await startInput.inputValue().catch(() => "");
+        const endVal = await endInput.inputValue().catch(() => "");
+        if (startVal.trim() && endVal.trim()) {
+          console.log(`[QuestionnairePage] Range picker filled successfully via dropdown: "${startVal}" to "${endVal}"`);
+          dropdownSuccess = true;
+        }
+      }
+    }
+
+    if (dropdownSuccess) {
+      return true;
+    }
+
+    console.log("[QuestionnairePage] Dropdown range selection failed or not applicable, falling back to manual typing");
 
     const fillAntDDateInput = async (
       input: ReturnType<Page["locator"]>,
@@ -1632,9 +1737,12 @@ export class QuestionnairePage {
       .toLowerCase()
       .trim();
 
-    console.log(
-      `[QuestionnairePage] Active condition detected: "${activeCondition}"`,
-    );
+    // No condition override set — skip rule-based answering entirely.
+    // This avoids misleading logs like "Active condition detected: shingles"
+    // when the actual flow is for a different condition (e.g. chickenpox vaccine).
+    if (!activeCondition) {
+      return false;
+    }
 
     const rules =
       activeCondition === "weight management"
@@ -1648,6 +1756,10 @@ export class QuestionnairePage {
     if (rules.length === 0) {
       return false;
     }
+
+    console.log(
+      `[QuestionnairePage] Active condition detected: "${activeCondition}" (${rules.length} rules)`,
+    );
 
     let handledAnyRule = false;
 
@@ -2201,6 +2313,10 @@ export class QuestionnairePage {
         continue;
       }
 
+      console.log(
+        `[QuestionnairePage] Answering checkbox group ${i + 1}/${cbGroupCount} with ${optCount} options`,
+      );
+
       // Pick checkbox(es) based on flow type
       if (this.shouldUseRandomAnswers()) {
         const numToSelect = 1 + Math.floor(Math.random() * optCount);
@@ -2280,24 +2396,136 @@ export class QuestionnairePage {
     }
 
     // ── Standalone checkboxes (check_agree type) ────────────────────────────
+    // Match check-agree wrappers AND any unchecked checkbox inside a
+    // questionnaire-answer-wrapper that is NOT inside an ant-checkbox-group
+    // (those are already handled above).
+    const checkAgreeWrappers = this.page.locator(
+      [
+        ".questionnaire-answer-wrapper:visible .check-agree-question-wrapper",
+        ".questionnaire-answer-box:visible .check-agree-question-wrapper",
+        ".questionnaire-answer-body:visible .check-agree-question-wrapper",
+      ].join(", ")
+    );
+    const caCount = await checkAgreeWrappers.count().catch(() => 0);
+    for (let i = 0; i < caCount; i++) {
+      const wrapper = checkAgreeWrappers.nth(i);
+      if (!(await wrapper.isVisible().catch(() => false))) continue;
+
+      // Check if already ticked
+      const alreadyChecked = await wrapper
+        .locator(
+          ".ant-checkbox-wrapper-checked, input[type='checkbox']:checked",
+        )
+        .count()
+        .then((c) => c > 0)
+        .catch(() => false);
+      if (alreadyChecked) continue;
+
+      // Click the visual AntD checkbox element
+      const checkboxVisual = wrapper
+        .locator(
+          ".ant-checkbox-inner, .ant-checkbox, .ant-checkbox-input, input[type='checkbox']",
+        )
+        .first();
+      if (await checkboxVisual.isVisible().catch(() => false)) {
+        console.log(
+          `[QuestionnairePage] Clicking check-agree checkbox ${i + 1}/${caCount}`,
+        );
+        await checkboxVisual.scrollIntoViewIfNeeded().catch(() => {});
+        await checkboxVisual.click({ force: true }).catch(async () => {
+          await checkboxVisual.evaluate((el: HTMLElement) => el.click());
+        });
+        await this.page.waitForTimeout(400);
+        return true;
+      }
+
+      // Fallback: click the ant-checkbox-wrapper label itself
+      const cbWrapper = wrapper.locator(".ant-checkbox-wrapper").first();
+      if (await cbWrapper.isVisible().catch(() => false)) {
+        console.log(
+          `[QuestionnairePage] Clicking check-agree wrapper label ${i + 1}/${caCount}`,
+        );
+        await cbWrapper.scrollIntoViewIfNeeded().catch(() => {});
+        await cbWrapper.click({ force: true }).catch(async () => {
+          await cbWrapper.evaluate((el: HTMLElement) => el.click());
+        });
+        await this.page.waitForTimeout(400);
+        return true;
+      }
+    }
+
+    // Also handle standalone unchecked checkboxes not in a group or check-agree wrapper
     const standaloneCheckboxes = this.page.locator(
-      ".questionnaire-answer-wrapper:visible input[type='checkbox']:not([disabled])",
+      [
+        ".questionnaire-answer-wrapper:visible input[type='checkbox']:not([disabled])",
+        ".questionnaire-answer-box:visible input[type='checkbox']:not([disabled])",
+        ".questionnaire-answer-body:visible input[type='checkbox']:not([disabled])",
+      ].join(", ")
     );
     const stCbCount = await standaloneCheckboxes.count().catch(() => 0);
     for (let i = 0; i < stCbCount; i++) {
       const cb = standaloneCheckboxes.nth(i);
       if (!(await cb.isVisible().catch(() => false))) continue;
       if (await cb.isChecked().catch(() => false)) continue;
+      // Skip if this checkbox is inside an ant-checkbox-group (handled above)
+      const insideGroup = await cb
+        .evaluate(
+          (el: Element) =>
+            el.closest(".ant-checkbox-group") !== null,
+        )
+        .catch(() => false);
+      if (insideGroup) continue;
+      console.log(
+        `[QuestionnairePage] Clicking standalone checkbox ${i + 1}/${stCbCount}`,
+      );
       await cb.scrollIntoViewIfNeeded().catch(() => {});
-      await cb.check({ force: true }).catch(() => {});
+      await cb.check({ force: true }).catch(async () => {
+        await cb.evaluate((el: HTMLInputElement) => {
+          el.checked = true;
+          el.dispatchEvent(
+            new MouseEvent("click", { bubbles: true, cancelable: true }),
+          );
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+      });
       await this.page.waitForTimeout(300);
       await this.fillRevealedSubInputs();
       return true;
     }
 
-    // ── Date pickers ────────────────────────────────────────────────────────
+    // ── Range date pickers (ant-picker-range with start/end) ─────────────────
+    const rangePickers = this.page.locator(
+      [
+        ".questionnaire-answer-wrapper:visible .ant-picker-range",
+        ".questionnaire-answer-box:visible .ant-picker-range",
+        ".questionnaire-answer-body:visible .ant-picker-range",
+      ].join(", ")
+    );
+    const rpCount = await rangePickers.count().catch(() => 0);
+    for (let i = 0; i < rpCount; i++) {
+      const picker = rangePickers.nth(i);
+      if (!(await picker.isVisible().catch(() => false))) continue;
+      // Check if start date is already filled
+      const startInput = picker
+        .locator('input[date-range="start"]')
+        .first();
+      const startVal =
+        (await startInput.inputValue().catch(() => "")) ?? "";
+      if (startVal.trim()) continue; // already filled
+      console.log(
+        `[QuestionnairePage] Filling range date picker ${i + 1}/${rpCount}`,
+      );
+      const filled = await this.fillRangeDatePickerByRule();
+      if (filled) return true;
+    }
+
+    // ── Single date pickers (non-range) ──────────────────────────────────────
     const datePickers = this.page.locator(
-      ".questionnaire-answer-wrapper:visible .ant-picker input:not([disabled])",
+      [
+        ".questionnaire-answer-wrapper:visible .ant-picker:not(.ant-picker-range) input:not([disabled])",
+        ".questionnaire-answer-box:visible .ant-picker:not(.ant-picker-range) input:not([disabled])",
+        ".questionnaire-answer-body:visible .ant-picker:not(.ant-picker-range) input:not([disabled])",
+      ].join(", ")
     );
     const dpCount = await datePickers.count().catch(() => 0);
     for (let i = 0; i < dpCount; i++) {
@@ -2305,7 +2533,7 @@ export class QuestionnairePage {
       if (!(await input.isVisible().catch(() => false))) continue;
       const value = (await input.inputValue().catch(() => "")) ?? "";
       if (value.trim()) continue; // already filled
-      console.log(`[QuestionnairePage] Filling date picker ${i + 1}`);
+      console.log(`[QuestionnairePage] Filling single date picker ${i + 1}`);
       return this.fillDateByRule(
         this.shouldUseRandomAnswers() ? this.randomDate() : "01-01-2020",
       );
@@ -2313,7 +2541,11 @@ export class QuestionnairePage {
 
     // ── Number inputs ───────────────────────────────────────────────────────
     const numberInputs = this.page.locator(
-      ".questionnaire-answer-wrapper:visible input[type='number']:not([disabled])",
+      [
+        ".questionnaire-answer-wrapper:visible input[type='number']:not([disabled])",
+        ".questionnaire-answer-box:visible input[type='number']:not([disabled])",
+        ".questionnaire-answer-body:visible input[type='number']:not([disabled])",
+      ].join(", ")
     );
     const numCount = await numberInputs.count().catch(() => 0);
     for (let i = 0; i < numCount; i++) {
@@ -2323,8 +2555,14 @@ export class QuestionnairePage {
       if (value.trim()) continue;
       const nearText = await input
         .evaluate(
-          (el: Element) =>
-            el.closest(".questionnaire-answer-wrapper")?.textContent ?? "",
+          (el: Element) => {
+            const w = el.closest(".questionnaire-answer-wrapper") ||
+                      el.closest(".questionnaire-answer-body") ||
+                      el.closest(".questionnaire-answer-box") ||
+                      el.closest(".text-box-question-wrapper") ||
+                      el.closest(".child-questions");
+            return w?.textContent ?? "";
+          }
         )
         .catch(() => "");
       const placeholder =
@@ -2355,9 +2593,19 @@ export class QuestionnairePage {
     }
 
     // ── Text inputs / textareas ─────────────────────────────────────────────
+    // IMPORTANT: Exclude date-range picker inputs (they have [date-range] attr)
+    // and inputs inside .ant-picker elements to avoid filling date fields with text.
     const textInputs = this.page.locator(
-      ".questionnaire-answer-wrapper:visible input[type='text']:not([disabled]):not([name='first_name']):not([name='last_name']):not([name='postcode'])," +
-        " .questionnaire-answer-wrapper:visible textarea:not([disabled])",
+      [
+        ".questionnaire-answer-wrapper:visible input[type='text']:not([disabled]):not([name='first_name']):not([name='last_name']):not([name='postcode']):not([date-range])",
+        ".questionnaire-answer-box:visible input[type='text']:not([disabled]):not([name='first_name']):not([name='last_name']):not([name='postcode']):not([date-range])",
+        ".questionnaire-answer-body:visible input[type='text']:not([disabled]):not([name='first_name']):not([name='last_name']):not([name='postcode']):not([date-range])",
+        ".child-questions:visible input[type='text']:not([disabled]):not([date-range])",
+        ".text-box-question-wrapper:visible input[type='text']:not([disabled]):not([date-range])",
+        ".questionnaire-answer-wrapper:visible textarea:not([disabled])",
+        ".questionnaire-answer-box:visible textarea:not([disabled])",
+        ".questionnaire-answer-body:visible textarea:not([disabled])",
+      ].join(", ")
     );
     const txtCount = await textInputs.count().catch(() => 0);
     for (let i = 0; i < txtCount; i++) {
@@ -2366,16 +2614,36 @@ export class QuestionnairePage {
       if (!(await input.isEnabled().catch(() => false))) continue;
       const value = (await input.inputValue().catch(() => "")) ?? "";
       if (value.trim()) continue;
+
+      // Skip inputs that are inside an AntD date picker (ant-picker)
+      const insidePicker = await input
+        .evaluate(
+          (el: Element) => el.closest(".ant-picker") !== null,
+        )
+        .catch(() => false);
+      if (insidePicker) continue;
+
       const placeholder =
         (await input.getAttribute("placeholder").catch(() => "")) || "";
+
+      // Skip inputs whose placeholder looks like a date format
+      if (/DD.*MM.*YYYY|YYYY.*MM.*DD|mm.*dd.*yyyy/i.test(placeholder)) continue;
+
       const nearText = await input
         .evaluate(
-          (el: Element) =>
-            el.closest(".questionnaire-answer-wrapper")?.textContent ?? "",
+          (el: Element) => {
+            const w = el.closest(".questionnaire-answer-wrapper") ||
+                      el.closest(".questionnaire-answer-body") ||
+                      el.closest(".questionnaire-answer-box") ||
+                      el.closest(".text-box-question-wrapper") ||
+                      el.closest(".child-questions");
+            return w?.textContent ?? "";
+          }
         )
         .catch(() => "");
       const combined = (placeholder + " " + nearText).toLowerCase();
 
+      // Contextual answer generation based on question text
       let val = "None";
       // Handle range/scale patterns: "rate from 1 to 10", "scale 1-10", "(1-10)", etc.
       const rangeMatch =
@@ -2388,10 +2656,27 @@ export class QuestionnairePage {
         if (!isNaN(min) && !isNaN(max) && max > min) {
           val = Math.floor((min + max) / 2).toString();
         }
+      } else if (
+        /medical history|conditions|treated for|provide details/i.test(combined)
+      ) {
+        val = "No significant medical history";
+      } else if (/medication|prescription|over the counter/i.test(combined)) {
+        val = "No current medications";
+      } else if (/allerg/i.test(combined)) {
+        val = "No known allergies";
+      } else if (/name|person|who/i.test(combined)) {
+        const names = ["John Smith", "Jane Doe", "Alex Jones", "Emily Taylor"];
+        val = names[Math.floor(Math.random() * names.length)];
       }
 
+      console.log(
+        `[QuestionnairePage] Filling text input ${i + 1}/${txtCount} with "${val}"`,
+      );
       await input.scrollIntoViewIfNeeded().catch(() => {});
+      await input.click({ force: true }).catch(() => {});
       await input.fill(val).catch(() => {});
+      await input.blur().catch(() => {});
+      await this.page.waitForTimeout(200);
       return true;
     }
 

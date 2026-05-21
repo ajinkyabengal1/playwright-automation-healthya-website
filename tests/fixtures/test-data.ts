@@ -70,13 +70,28 @@ export const ACTIVE_CONDITION = {
 };
 
 export function getActiveConditionName(): string {
-  // Per-test override (set by run-flow.ts via FlowConfig.questionnaireRulesKey).
+  // Per-test override (set by run-flow.ts via FlowConfig.questionnaireRulesKey
+  // or auto-detected from page text in detectQuestionnaireRulesKeyFromText).
   // Allows different flows in the same Playwright run to apply different rule sets
   // without mutating the ACTIVE_CONDITION constant.
   const override = process.env.OVERRIDE_ACTIVE_CONDITION;
   if (override && override.trim().length > 0) {
     return override.trim();
   }
+  // Return empty string when no override is set — the hardcoded ACTIVE_CONDITION
+  // should NOT be used as a silent fallback, because it causes every unknown
+  // condition to incorrectly apply shingles/weight-management/ED rules.
+  // The caller (QuestionnairePage) will fall through to the generic answering
+  // strategy when the returned value is empty.
+  return "";
+}
+
+/**
+ * Returns the condition from the hardcoded ACTIVE_CONDITION config.
+ * Use this only when you explicitly want the default condition (e.g. in specs
+ * that are designed for a specific condition and don't use dynamic detection).
+ */
+export function getDefaultConditionName(): string {
   return CONDITION_CATALOG[ACTIVE_CONDITION.journeyType];
 }
 

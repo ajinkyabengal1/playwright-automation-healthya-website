@@ -41,8 +41,15 @@ type JourneyStep =
 function detectQuestionnaireRulesKeyFromText(text: string): string | null {
   const t = (text || "").toLowerCase();
 
+  // Shingles detection: require the word "shingles" in a heading/title context
+  // (e.g. "Shingles Vaccine", "shingles assessment") but NOT just as a checkbox
+  // option label (e.g. "Shingles" in "Please list all vaccines...").
+  // We check for "shingles" appearing near condition/assessment/treatment context
+  // OR "herpes zoster" which is specific to shingles conditions.
   if (
-    /shingles|herpes zoster/.test(t)
+    /herpes zoster/.test(t) ||
+    /shingles\s*(vaccination|vaccine|assessment|treatment|consultation|service|condition|questionnaire)/i.test(t) ||
+    /(assessment|treatment|consultation|service|condition|questionnaire)\s*(for|about|regarding)?\s*shingles/i.test(t)
   ) {
     return "shingles";
   }
