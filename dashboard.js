@@ -431,6 +431,10 @@ function readTestData() {
     condition: { journeyType },
     appointment: {
       appointmentType: getEnv("TD_APPOINTMENT_TYPE") || "Video",
+      appointmentTime: getEnv("TD_BOOKING_PREFERRED_TIME") || get("preferredTime"),
+      appointmentStartTime: getEnv("TD_BOOKING_START_TIME") || "",
+      appointmentDurationMins: getEnv("TD_BOOKING_DURATION_MIN") || "",
+      apiDebug: getEnv("TD_API_DEBUG") !== "false",
     },
     booking: {
       useNextAvailableSlot: getBool("useNextAvailableSlot"),
@@ -1178,6 +1182,10 @@ app.get("/api/run-tests", (req, res) => {
       set("TD_SHIP_ADDRESS_ACTION", sh.addressAction);
       set("TD_PAYMENT_METHOD", sh.paymentMethod);
       set("TD_APPOINTMENT_TYPE",    a.appointmentType);
+      set("TD_BOOKING_PREFERRED_TIME", a.appointmentTime);
+      set("TD_BOOKING_START_TIME", a.appointmentStartTime);
+      set("TD_BOOKING_DURATION_MIN", a.appointmentDurationMins);
+      set("TD_API_DEBUG", String(a.apiDebug));
       // Always override TD_PIN to prevent parent env from leaking a stale value
       tdEnv["TD_PIN"] = (u.pin != null && String(u.pin).trim()) ? String(u.pin).trim() : "";
       set("TD_TRIGGER_CONTACT_RECOVERY", String(u.triggerContactRecovery));
@@ -1198,6 +1206,9 @@ app.get("/api/run-tests", (req, res) => {
   }
 
   const runOutputDir = path.join(__dirname, "test-results", `run-${runId}`);
+  if (!("TD_API_DEBUG" in tdEnv)) {
+    tdEnv["TD_API_DEBUG"] = "true";
+  }
   const args = [
     "exec",
     "playwright",

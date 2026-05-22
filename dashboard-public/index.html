@@ -1102,6 +1102,101 @@
         font-weight: 700;
       }
 
+      /* API panel */
+      #api-panel {
+        display: none;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+        background: var(--clr-main);
+        transition: background var(--transition);
+      }
+      #api-toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--clr-border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: var(--clr-txt-muted);
+        font-size: 11px;
+      }
+      #api-list {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        padding: 12px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        align-content: flex-start;
+      }
+      .api-empty {
+        border: 1px dashed var(--clr-border);
+        border-radius: 8px;
+        padding: 14px;
+        color: var(--clr-txt-muted);
+        font-size: 12px;
+        text-align: center;
+      }
+      .api-item {
+        flex: 0 0 auto;
+        min-width: 0;
+        border: 1px solid var(--clr-border);
+        border-radius: 8px;
+        background: var(--clr-surface);
+        overflow: hidden;
+      }
+      .api-head {
+        display: grid;
+        grid-template-columns: 56px 74px 62px minmax(280px, 1fr);
+        gap: 10px;
+        padding: 8px 10px;
+        cursor: pointer;
+        align-items: center;
+        font-size: 11px;
+        min-width: 0;
+      }
+      .api-url {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+      }
+      .api-status-ok { color: var(--clr-pass); font-weight: 700; }
+      .api-status-bad { color: var(--clr-fail); font-weight: 700; }
+      .api-body {
+        display: none;
+        border-top: 1px solid var(--clr-border);
+        padding: 8px 10px 10px;
+      }
+      .api-item.open .api-body { display: block; }
+      .api-pre {
+        margin: 0;
+        font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+        font-size: 11px;
+        line-height: 1.5;
+        color: var(--clr-txt-log);
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: var(--clr-log);
+        border: 1px solid var(--clr-border);
+        border-radius: 6px;
+        padding: 8px;
+        max-height: 220px;
+        overflow: auto;
+      }
+      @media (max-width: 900px) {
+        .api-head {
+          grid-template-columns: 46px 64px 54px minmax(180px, 1fr);
+          gap: 8px;
+          font-size: 10px;
+        }
+      }
+
       /* Artifacts panel */
       #artifacts-panel {
         display: none; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto;
@@ -1984,6 +2079,7 @@
         <!-- Tab bar -->
         <div id="tab-bar">
           <div class="tab active" data-tab="output">Output</div>
+          <div class="tab" data-tab="api">API</div>
           <div class="tab" data-tab="artifacts">Artifacts</div>
           <div class="tab" data-tab="results">Results</div>
           <div class="tab" data-tab="testdata">⚙ Test Data</div>
@@ -1995,6 +2091,16 @@
             <span class="log-start"
               >Ready. Single pharmacy mode: healthya.</span
             >
+          </div>
+        </div>
+
+        <div id="api-panel">
+          <div id="api-toolbar">
+            <span id="api-count">0 calls</span>
+            <span>Enable API debug in Test Data to capture responses</span>
+          </div>
+          <div id="api-list">
+            <div class="api-empty">No API calls yet.</div>
           </div>
         </div>
 
@@ -2217,6 +2323,39 @@
                     <option value="Phone call">Phone call</option>
                   </select>
                 </div>
+                <div class="td-field">
+                  <label>Appointment Time</label>
+                  <input
+                    id="td-appointmentTime"
+                    class="td-input"
+                    type="text"
+                    placeholder="07:00 AM"
+                  />
+                </div>
+                <div class="td-field">
+                  <label>Start Time</label>
+                  <input
+                    id="td-appointmentStartTime"
+                    class="td-input"
+                    type="text"
+                    placeholder="07:00 AM"
+                  />
+                </div>
+                <div class="td-field">
+                  <label>Duration (mins)</label>
+                  <input
+                    id="td-appointmentDurationMins"
+                    class="td-input"
+                    type="number"
+                    min="1"
+                    step="1"
+                    placeholder="10"
+                  />
+                </div>
+                <label class="td-check-row mt-2" style="grid-column: 1 / -1">
+                  <input type="checkbox" id="td-apiDebug" checked />
+                  Enable API debug logs (request/response stack in Output)
+                </label>
               </div>
             </div>
 
@@ -2448,6 +2587,8 @@
       const btnClearQueuedLinks = document.getElementById(
         "btn-clear-queued-links",
       );
+      const apiListEl = document.getElementById("api-list");
+      const apiCountEl = document.getElementById("api-count");
 
       let healthyaAnalysis = null;
 
@@ -2461,6 +2602,8 @@
           const which = tab.dataset.tab;
           document.getElementById("output-panel").style.display =
             which === "output" ? "flex" : "none";
+          document.getElementById("api-panel").style.display =
+            which === "api" ? "flex" : "none";
           document.getElementById("artifacts-panel").style.display =
             which === "artifacts" ? "flex" : "none";
           document.getElementById("results-panel").style.display =
@@ -2468,6 +2611,7 @@
           document.getElementById("testdata-panel").style.display =
             which === "testdata" ? "flex" : "none";
           if (which === "results") loadResults();
+          if (which === "api") renderApiPanel();
         });
       });
 
@@ -3245,6 +3389,10 @@
         set("td-addressAction", s.addressAction);
         set("td-paymentMethod", s.paymentMethod);
         set("td-appointmentType", a.appointmentType);
+        set("td-appointmentTime", a.appointmentTime);
+        set("td-appointmentStartTime", a.appointmentStartTime);
+        set("td-appointmentDurationMins", a.appointmentDurationMins);
+        check("td-apiDebug", a.apiDebug !== false);
 
         const recoveryCheck = document.getElementById(
           "td-triggerContactRecovery",
@@ -3306,6 +3454,10 @@
           },
           appointment: {
             appointmentType: val("td-appointmentType"),
+            appointmentTime: val("td-appointmentTime"),
+            appointmentStartTime: val("td-appointmentStartTime"),
+            appointmentDurationMins: val("td-appointmentDurationMins"),
+            apiDebug: boolVal("td-apiDebug"),
           },
         };
       }
@@ -3560,6 +3712,88 @@
       function clearLog() {
         logEl.innerHTML = "";
       }
+      function parseApiLogLine(text) {
+        const head = text.match(/^\[API\s+(\d+)\]\s+([A-Z]+)\s+(\d{3})\s+(https?:\/\/\S+)/);
+        if (head) {
+          return {
+            kind: "head",
+            index: Number(head[1]),
+            method: head[2],
+            status: Number(head[3]),
+            url: head[4],
+          };
+        }
+        const req = text.match(/^\[API\s+(\d+)\]\s+request:\s*(.*)$/);
+        if (req) return { kind: "request", index: Number(req[1]), body: req[2] || "" };
+        const res = text.match(/^\[API\s+(\d+)\]\s+response:\s*(.*)$/);
+        if (res) return { kind: "response", index: Number(res[1]), body: res[2] || "" };
+        return null;
+      }
+
+      function upsertApiEvent(run, parsed) {
+        if (!run.apiEvents) run.apiEvents = [];
+        let item = run.apiEvents.find((x) => x.index === parsed.index);
+        if (!item) {
+          item = {
+            index: parsed.index,
+            method: "",
+            status: 0,
+            url: "",
+            request: "",
+            response: "",
+          };
+          run.apiEvents.push(item);
+          run.apiEvents.sort((a, b) => a.index - b.index);
+        }
+        if (parsed.kind === "head") {
+          item.method = parsed.method;
+          item.status = parsed.status;
+          item.url = parsed.url;
+        } else if (parsed.kind === "request") {
+          item.request = parsed.body;
+        } else if (parsed.kind === "response") {
+          item.response = parsed.body;
+        }
+      }
+
+      function renderApiPanel() {
+        const run = selectedRunId ? runs.get(selectedRunId) : null;
+        const events = run?.apiEvents || [];
+        apiCountEl.textContent = `${events.length} call${events.length === 1 ? "" : "s"}`;
+        if (!events.length) {
+          apiListEl.innerHTML = `<div class="api-empty">No API calls yet.</div>`;
+          return;
+        }
+
+        apiListEl.innerHTML = events
+          .map((e) => {
+            const statusCls = e.status >= 200 && e.status < 400 ? "api-status-ok" : "api-status-bad";
+            return `
+              <div class="api-item" data-api-index="${e.index}">
+                <div class="api-head">
+                  <span>#${e.index}</span>
+                  <span>${escapeHtml(e.method || "-")}</span>
+                  <span class="${statusCls}">${escapeHtml(String(e.status || "-"))}</span>
+                  <span class="api-url" title="${escapeHtml(e.url || "")}">${escapeHtml(e.url || "-")}</span>
+                </div>
+                <div class="api-body">
+                  <div style="font-size:10px;color:var(--clr-txt-muted);margin-bottom:4px;">Request</div>
+                  <pre class="api-pre">${escapeHtml(e.request || "<empty>")}</pre>
+                  <div style="font-size:10px;color:var(--clr-txt-muted);margin:8px 0 4px;">Response</div>
+                  <pre class="api-pre">${escapeHtml(e.response || "<empty>")}</pre>
+                </div>
+              </div>
+            `;
+          })
+          .join("");
+
+        apiListEl.querySelectorAll(".api-head").forEach((el) => {
+          el.addEventListener("click", () => {
+            el.parentElement.classList.toggle("open");
+          });
+        });
+      }
+
       function classifyLog(text) {
         if (/✔ Detected journey:/i.test(text)) return "log-start"; // Highlight journey detection
         if (/passed|✓|PASS/i.test(text)) return "log-pass";
@@ -4138,9 +4372,13 @@
       function renderSelectedRun() {
         const run = selectedRunId ? runs.get(selectedRunId) : null;
         clearLog();
-        if (!run) return;
+        if (!run) {
+          renderApiPanel();
+          return;
+        }
 
         run.logs.forEach(({ text, cls }) => appendLog(text, cls));
+        renderApiPanel();
 
         if (run.status === "running") {
           setStatus("running", `Running: ${run.label}`);
@@ -4191,7 +4429,10 @@
         const run = runs.get(runId);
         if (!run) return;
         run.logs.push({ text, cls });
+        const parsed = parseApiLogLine(text);
+        if (parsed) upsertApiEvent(run, parsed);
         if (selectedRunId === runId) appendLog(text, cls);
+        if (selectedRunId === runId && parsed) renderApiPanel();
       }
 
       async function refreshLiveArtifacts() {

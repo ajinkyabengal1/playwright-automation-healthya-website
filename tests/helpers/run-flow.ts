@@ -38,6 +38,66 @@ type JourneyStep =
   | "dead_end"
   | "unknown";
 
+function setupApiDebugLogging(page: Page): void {
+  const enabled = (process.env.TD_API_DEBUG || "").trim().toLowerCase() === "true";
+  if (!enabled) return;
+
+  let counter = 0;
+  const MAX_BODY_CHARS = 1500;
+  const MAX_EVENTS = 250;
+
+  const isApiLike = (url: string, resourceType: string): boolean => {
+    const u = url.toLowerCase();
+    return (
+      resourceType === "xhr" ||
+      resourceType === "fetch" ||
+      u.includes("/api/") ||
+      u.includes("graphql") ||
+      u.includes("patient")
+    );
+  };
+
+  page.on("response", async (response) => {
+    try {
+      if (counter >= MAX_EVENTS) return;
+      const req = response.request();
+      if (!isApiLike(response.url(), req.resourceType())) return;
+      counter += 1;
+
+      const url = response.url();
+      const method = req.method();
+      const status = response.status();
+
+      let reqBody = req.postData() || "";
+      if (reqBody.length > MAX_BODY_CHARS) {
+        reqBody = `${reqBody.slice(0, MAX_BODY_CHARS)}...<truncated>`;
+      }
+
+      let resBody = "";
+      const ctype = (response.headers()["content-type"] || "").toLowerCase();
+      if (
+        ctype.includes("application/json") ||
+        ctype.includes("text/") ||
+        ctype.includes("application/problem+json")
+      ) {
+        resBody = await response.text().catch(() => "");
+        if (resBody.length > MAX_BODY_CHARS) {
+          resBody = `${resBody.slice(0, MAX_BODY_CHARS)}...<truncated>`;
+        }
+      } else {
+        resBody = `<non-text response: ${ctype || "unknown"}>`;
+      }
+
+      console.log(`[API ${counter}] ${method} ${status} ${url}`);
+      if (reqBody) console.log(`[API ${counter}] request: ${reqBody}`);
+      console.log(`[API ${counter}] response: ${resBody || "<empty>"}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log(`[API] logger error: ${msg}`);
+    }
+  });
+}
+
 function detectQuestionnaireRulesKeyFromText(text: string): string | null {
   const t = (text || "").toLowerCase();
 
@@ -457,6 +517,8 @@ export async function runConditionFlow(
   user: typeof TEST_USER,
   projectBaseURL?: string,
 ): Promise<void> {
+  setupApiDebugLogging(page);
+
   const conditionsPage = new ConditionsPage(page);
   const detailPage = new ConditionDetailPage(page);
   const guestContinuePage = new GuestContinuePage(page);
