@@ -1677,23 +1677,7 @@
         display: block;
       }
 
-      /* ── Fixed test cases section ────────────────────────────────────────────── */
-      #fixed-tests-hdr {
-        padding: 10px 14px 4px;
-        font-size: 10px;
-        font-weight: 700;
-        text-transform: uppercase;
-        color: var(--clr-txt-muted);
-        letter-spacing: 0.06em;
-        flex-shrink: 0;
-        border-top: 1px solid var(--clr-border);
-        margin-top: 4px;
-      }
-      #fixed-tests {
-        flex-shrink: 0;
-        border-bottom: 1px solid var(--clr-border);
-        padding-bottom: 4px;
-      }
+
 
       /* ── Tree header label ────────────────────────────────────────────────────── */
       #tree-hdr {
@@ -2028,8 +2012,7 @@
             <!-- Steps injected via JS -->
           </div>
         </div>
-        <div id="fixed-tests-hdr">Fixed Test Cases</div>
-        <div id="fixed-tests"></div>
+
         <div id="tree-hdr">Functional Test Cases</div>
         <div id="tree">
           <div class="empty-state">Loading tests for healthya...</div>
@@ -2458,13 +2441,7 @@
         localStorage.setItem("pw-theme", next);
       });
 
-      // ── State ──────────────────────────────────────────────────────────────────
-      const FIXED_TEST_CASES = [
-        { id: "FTC-01", name: "Shingles (Herpes Zoster)", url: "https://dev-api.healthya.co.uk/pcX87LT" },
-        { id: "FTC-02", name: "Shingles", url: "https://dev-api.healthya.co.uk/4h9tNHE" },
-        { id: "FTC-03", name: "Weight Management (Weight Loss Treatment)", url: "https://dev-api.healthya.co.uk/wDBh5lz" },
-        { id: "FTC-04", name: "Erectile dysfunction", url: "https://dev-api.healthya.co.uk/zYiHuoS" },
-      ];
+
 
       let allTests = [];
       let allTestsMaster = [];
@@ -3918,62 +3895,7 @@
         }
       }
 
-      // ── Fixed test cases (pre-defined non-logged URLs) ────────────────────────
-      function renderFixedTests() {
-        const el = document.getElementById("fixed-tests");
-        if (!el) return;
-        el.innerHTML = "";
-        for (const tc of FIXED_TEST_CASES) {
-          const div = document.createElement("div");
-          div.className = "tree-test";
-          div.innerHTML = `
-            <div class="tc-id">${escapeHtml(tc.id)}</div>
-            <div class="tc-info">
-              <div class="tc-title">${escapeHtml(tc.name)}</div>
-              <div class="tc-cat">Non-Logged · pasted-link-flow</div>
-            </div>
-            <div class="tc-actions">
-              <button class="run-test-btn fixed-run-btn" title="Run this fixed test case (non-logged)">▶</button>
-            </div>
-          `;
-          div.querySelector(".fixed-run-btn").addEventListener("click", (e) => {
-            e.stopPropagation();
-            const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-            const tdOverrides = btoa(JSON.stringify(tdCollectForm()));
-            runs.set(runId, {
-              label: tc.name,
-              conditionName: tc.name,
-              tag: null,
-              rawUrl: tc.url,
-              flowMode: "non-logged",
-              status: "queued",
-              logs: [],
-              artifacts: null,
-              videoUrls: [],
-              startTime: null,
-              es: null,
-              elapsedTimer: null,
-              counts: null,
-              queueKey: null,
-              journey: "lifestyle",
-            });
-            runQueue.push({
-              runId,
-              file: "tests/e2e/pasted-link-flow.spec.ts",
-              label: tc.name,
-              rawLink: tc.url,
-              tdOverrides,
-            });
-            addRunCard(runId);
-            selectRun(runId);
-            updateQueuePositions();
-            updateGlobalStatus();
-            updatePharmacyLock();
-            processQueue();
-          });
-          el.appendChild(div);
-        }
-      }
+
 
       // ── Dynamic functional test cases (derived from discovered tests) ─────────
       function renderTree(tests) {
@@ -4993,7 +4915,7 @@
 
       // ── Init ───────────────────────────────────────────────────────────────────
       updateCustomLinkVisibility();
-      renderFixedTests();
+
       loadTests(currentPharmacy);
       loadTestData();
       updateClearButton();
