@@ -1,5 +1,6 @@
 import { test, Page } from "@playwright/test";
 import { QuestionnairePage } from "../page-objects/QuestionnairePage";
+import { dismissCookieConsent } from "../helpers/cookie-consent";
 
 function detectConditionFromText(text: string): string | null {
   const t = (text || "").toLowerCase();
@@ -34,6 +35,7 @@ test.describe("Pasted Link Logged-In Flow", () => {
     test.skip(!dobDay || !dobMonth || !dobYear, "DOB not fully provided");
 
     await page.goto(startUrl!, { waitUntil: "domcontentloaded" });
+    await dismissCookieConsent(page);
 
     // Bail out early if the link has expired
     const bodyText = await page.locator("body").innerText().catch(() => "");
@@ -61,6 +63,7 @@ test.describe("Pasted Link Logged-In Flow", () => {
     const continueBtn = page.locator('button.submitbtn:has-text("Continue"), button.healthya-button:has-text("Continue")').first();
     await continueBtn.waitFor({ state: "visible", timeout: 5_000 });
     await continueBtn.click();
+    await dismissCookieConsent(page);
 
     // Detect condition from page text so QuestionnairePage uses correct rule set
     await page.waitForTimeout(1500);

@@ -1,4 +1,5 @@
 import { Page, expect, test } from "@playwright/test";
+import { dismissCookieConsent } from "./cookie-consent";
 import {
   TEST_USER,
   CART_PREFERENCES,
@@ -131,22 +132,6 @@ function detectQuestionnaireRulesKeyFromText(text: string): string | null {
   }
 
   return null;
-}
-
-async function dismissCookieConsent(page: Page): Promise<void> {
-  try {
-    const acceptBtn = page.locator(
-      'button:has-text("Accept All"), button:has-text("Accept Cookies"), button:has-text("Accept all cookies")',
-    ).first();
-    const visible = await acceptBtn.isVisible({ timeout: 2000 }).catch(() => false);
-    if (visible) {
-      await acceptBtn.click({ timeout: 3000 });
-      console.log("✔ Cookie consent dismissed (Accept All)");
-      await page.waitForTimeout(500);
-    }
-  } catch {
-    // Cookie banner not present or already dismissed — continue
-  }
 }
 
 async function checkLinkExpired(page: Page): Promise<void> {
