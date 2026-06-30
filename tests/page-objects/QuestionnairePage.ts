@@ -218,7 +218,7 @@ export class QuestionnairePage {
   ): Promise<boolean> {
     const enabledWrappers = wrappers.filter({
       hasNot: this.page.locator(
-        ".ant-radio-wrapper-disabled, .ant-radio-button-wrapper-disabled, [aria-disabled='true']",
+        ".ant-radio-wrapper-disabled, .ant-radio-button-wrapper-disabled, [aria-disabled='true'], input[disabled]",
       ),
     });
     const count = await enabledWrappers.count().catch(() => 0);
@@ -1434,7 +1434,9 @@ export class QuestionnairePage {
           ".ant-radio-button-wrapper:not(.ant-radio-button-wrapper-disabled)",
           'label:has(input[type="radio"]:not([disabled]))',
         ].join(", "),
-      );
+      ).filter({
+        hasNot: this.page.locator("input[disabled]"),
+      });
       const wrapperCount = await wrappers.count().catch(() => 0);
       if (wrapperCount > 0) {
         if (this.shouldUseRandomAnswers()) {
@@ -2267,9 +2269,13 @@ export class QuestionnairePage {
         .catch(() => 0);
       if (checkedCount > 0) continue;
 
-      const options = group.locator(
-        ".ant-radio-wrapper:not(.ant-radio-wrapper-disabled), .ant-radio-button-wrapper:not(.ant-radio-button-wrapper-disabled)",
-      );
+      const options = group
+        .locator(
+          ".ant-radio-wrapper:not(.ant-radio-wrapper-disabled), .ant-radio-button-wrapper:not(.ant-radio-button-wrapper-disabled)",
+        )
+        .filter({
+          hasNot: this.page.locator("input[disabled]"),
+        });
       const optCount = await options.count().catch(() => 0);
       if (!optCount) continue;
 
@@ -2289,9 +2295,11 @@ export class QuestionnairePage {
 
       // Use a fingerprint (first option text) to prevent re-processing this
       // group when the custom component's checked CSS class isn't detected.
-      const options = group.locator(
-        ".ant-checkbox-wrapper:not(.ant-checkbox-wrapper-disabled)",
-      );
+      const options = group
+        .locator(".ant-checkbox-wrapper:not(.ant-checkbox-wrapper-disabled)")
+        .filter({
+          hasNot: this.page.locator("input[disabled]"),
+        });
       const optCount = await options.count().catch(() => 0);
       if (!optCount) continue;
 

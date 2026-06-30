@@ -133,6 +133,22 @@ function detectQuestionnaireRulesKeyFromText(text: string): string | null {
   return null;
 }
 
+async function dismissCookieConsent(page: Page): Promise<void> {
+  try {
+    const acceptBtn = page.locator(
+      'button:has-text("Accept All"), button:has-text("Accept Cookies"), button:has-text("Accept all cookies")',
+    ).first();
+    const visible = await acceptBtn.isVisible({ timeout: 2000 }).catch(() => false);
+    if (visible) {
+      await acceptBtn.click({ timeout: 3000 });
+      console.log("✔ Cookie consent dismissed (Accept All)");
+      await page.waitForTimeout(500);
+    }
+  } catch {
+    // Cookie banner not present or already dismissed — continue
+  }
+}
+
 async function checkLinkExpired(page: Page): Promise<void> {
   const bodyText = await page.locator("body").innerText().catch(() => "");
   if (/link is expired/i.test(bodyText)) {
@@ -600,6 +616,7 @@ async function runConditionFlowImpl(
   if (startUrl) {
     console.log(`✔ Direct patient flow start URL: ${startUrl}`);
     await gotoStartUrlWithRetry(page, startUrl);
+    await dismissCookieConsent(page);
     await checkLinkExpired(page);
     const landingDetected = await landingPage.isVisible();
     if (landingDetected) {
@@ -657,13 +674,7 @@ async function runConditionFlowImpl(
       // Lifestyle treatments live on /lifestyle-treatments but cards link
       // to /conditions/{slug}#productSection (NOT /lifestyle-treatments/{slug}).
       await page.goto(`${baseUrl}/lifestyle-treatments`);
-      await page
-        .locator(
-          'button:has-text("Accept All"), button:has-text("Accept Cookies")',
-        )
-        .first()
-        .click()
-        .catch(() => {});
+      await dismissCookieConsent(page);
       await page
         .locator('a[href*="/conditions/"][href*="#productSection"]')
         .first()
@@ -727,6 +738,7 @@ async function runConditionFlowImpl(
       ? conditionHref
       : `${baseUrl}${conditionHref}`;
     await page.goto(detailUrl);
+    await dismissCookieConsent(page);
     await detailPage.waitForDetailPage();
 
     // ── Step 3: Eligibility form ──────────────────────────────────────────────
@@ -758,6 +770,7 @@ async function runConditionFlowImpl(
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     if (flowCompleted) break;
     await page.waitForTimeout(1500);
+    await dismissCookieConsent(page);
 
     if (await handleTerminalBackToHomePopup(page)) {
       console.log(
