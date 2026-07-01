@@ -40,7 +40,8 @@ type JourneyStep =
   | "unknown";
 
 function setupApiDebugLogging(page: Page): void {
-  const enabled = (process.env.TD_API_DEBUG || "").trim().toLowerCase() === "true";
+  const enabled =
+    (process.env.TD_API_DEBUG || "").trim().toLowerCase() === "true";
   if (!enabled) return;
 
   let counter = 0;
@@ -109,8 +110,12 @@ function detectQuestionnaireRulesKeyFromText(text: string): string | null {
   // OR "herpes zoster" which is specific to shingles conditions.
   if (
     /herpes zoster/.test(t) ||
-    /shingles\s*(vaccination|vaccine|assessment|treatment|consultation|service|condition|questionnaire)/i.test(t) ||
-    /(assessment|treatment|consultation|service|condition|questionnaire)\s*(for|about|regarding)?\s*shingles/i.test(t)
+    /shingles\s*(vaccination|vaccine|assessment|treatment|consultation|service|condition|questionnaire)/i.test(
+      t,
+    ) ||
+    /(assessment|treatment|consultation|service|condition|questionnaire)\s*(for|about|regarding)?\s*shingles/i.test(
+      t,
+    )
   ) {
     return "shingles";
   }
@@ -135,10 +140,16 @@ function detectQuestionnaireRulesKeyFromText(text: string): string | null {
 }
 
 async function checkLinkExpired(page: Page): Promise<void> {
-  const bodyText = await page.locator("body").innerText().catch(() => "");
+  const bodyText = await page
+    .locator("body")
+    .innerText()
+    .catch(() => "");
   if (/link is expired/i.test(bodyText)) {
     console.log("⚠ Link is Expired — stopping test.");
-    test.skip(true, "Link is Expired — this consultation link is no longer available.");
+    test.skip(
+      true,
+      "Link is Expired — this consultation link is no longer available.",
+    );
   }
 }
 
@@ -435,9 +446,9 @@ async function handleDeadEndTerminalActions(page: Page): Promise<boolean> {
     .catch(() => false);
   if (endVisible) {
     await endAssessmentBtn.click({ timeout: 3000 }).catch(async () => {
-      await endAssessmentBtn.click({ force: true, timeout: 3000 }).catch(
-        () => {},
-      );
+      await endAssessmentBtn
+        .click({ force: true, timeout: 3000 })
+        .catch(() => {});
     });
     await page.waitForTimeout(300);
     return true;
@@ -474,14 +485,25 @@ async function clickBookPrivateConsultationIfVisible(
   return true;
 }
 
-async function gotoStartUrlWithRetry(page: Page, startUrl: string): Promise<void> {
+async function gotoStartUrlWithRetry(
+  page: Page,
+  startUrl: string,
+): Promise<void> {
   const attempts: Array<{
     waitUntil: "domcontentloaded" | "commit";
     timeout: number;
     label: string;
   }> = [
-    { waitUntil: "domcontentloaded", timeout: 30_000, label: "domcontentloaded/30s" },
-    { waitUntil: "domcontentloaded", timeout: 45_000, label: "domcontentloaded/45s" },
+    {
+      waitUntil: "domcontentloaded",
+      timeout: 30_000,
+      label: "domcontentloaded/30s",
+    },
+    {
+      waitUntil: "domcontentloaded",
+      timeout: 45_000,
+      label: "domcontentloaded/45s",
+    },
     { waitUntil: "commit", timeout: 20_000, label: "commit/20s" },
   ];
 
@@ -534,7 +556,11 @@ export async function runConditionFlow(
   const payment = new PaymentPage(page);
   const landingPage = new LandingPage(page);
 
-  const baseUrl = (projectBaseURL ?? process.env.BASE_URL ?? "http://localhost:4005").replace(/\/$/, "");
+  const baseUrl = (
+    projectBaseURL ??
+    process.env.BASE_URL ??
+    "http://localhost:4005"
+  ).replace(/\/$/, "");
 
   const previousRulesOverride = process.env.OVERRIDE_ACTIVE_CONDITION;
   if (config.questionnaireRulesKey) {
@@ -607,10 +633,14 @@ async function runConditionFlowImpl(
     if (landingDetected) {
       const journey = await landingPage.detectJourneyFlow();
       if (journey) {
-        console.log(`✔ Landing page detected with journey: ${journey} — clicking Get Started`);
+        console.log(
+          `✔ Landing page detected with journey: ${journey} — clicking Get Started`,
+        );
         await landingPage.clickGetStartedIfVisible();
       } else {
-        console.log("⚠ Landing page detected but no journey data found; skipping Get Started click per requirements.");
+        console.log(
+          "⚠ Landing page detected but no journey data found; skipping Get Started click per requirements.",
+        );
       }
     } else {
       await landingPage.clickGetStartedIfVisible();
@@ -619,7 +649,10 @@ async function runConditionFlowImpl(
     await page.waitForTimeout(1200);
 
     if (!config.questionnaireRulesKey) {
-      const pageText = await page.locator("body").innerText().catch(() => "");
+      const pageText = await page
+        .locator("body")
+        .innerText()
+        .catch(() => "");
       const detectedRulesKey = detectQuestionnaireRulesKeyFromText(pageText);
       if (detectedRulesKey) {
         process.env.OVERRIDE_ACTIVE_CONDITION = detectedRulesKey;
@@ -674,7 +707,10 @@ async function runConditionFlowImpl(
       for (let i = 0; i < count; i++) {
         const href = await links.nth(i).getAttribute("href");
         const text =
-          (await links.nth(i).innerText().catch(() => "")) || "";
+          (await links
+            .nth(i)
+            .innerText()
+            .catch(() => "")) || "";
         if (!href) continue;
         if (
           href.toLowerCase().includes(target) ||
@@ -714,7 +750,11 @@ async function runConditionFlowImpl(
 
   if (!startUrl && pharmacySlug) {
     await page.context().addCookies([
-      { name: "selected-corporate-id", value: pharmacySlug, url: cookieOrigin },
+      {
+        name: "selected-corporate-id",
+        value: pharmacySlug,
+        url: cookieOrigin,
+      },
     ]);
   }
 
@@ -746,7 +786,7 @@ async function runConditionFlowImpl(
   console.log(`✔ Post-assessment URL: ${page.url()}`);
 
   // ── Steps 5–N: Dynamic journey loop ──────────────────────────────────────
-  const MAX_ITERATIONS = 40;
+  const MAX_ITERATIONS = 8;
   const stepVisits: Record<string, number> = {};
   const MAX_STEP_VISITS = 6;
   let flowCompleted = false;
@@ -778,7 +818,7 @@ async function runConditionFlowImpl(
     if (step === "dead_end") {
       if (await clickBookPrivateConsultationIfVisible(page)) {
         console.log(
-          '✔ Dead-end detected but Book Private Consultation clicked — continuing flow',
+          "✔ Dead-end detected but Book Private Consultation clicked — continuing flow",
         );
         continue;
       }
@@ -854,7 +894,9 @@ async function runConditionFlowImpl(
             console.log("⚠ Landing detected but Get Started not clickable yet");
           }
         } else {
-          console.log("⚠ Landing detected but no journey data found; skipping click per requirements.");
+          console.log(
+            "⚠ Landing detected but no journey data found; skipping click per requirements.",
+          );
         }
         await page.waitForTimeout(1200);
         break;
@@ -889,8 +931,12 @@ async function runConditionFlowImpl(
       case "questionnaire_submit": {
         console.log("→ Handling questionnaire step");
         if (!config.questionnaireRulesKey && !runtimeRulesOverrideApplied) {
-          const pageText = await page.locator("body").innerText().catch(() => "");
-          const detectedRulesKey = detectQuestionnaireRulesKeyFromText(pageText);
+          const pageText = await page
+            .locator("body")
+            .innerText()
+            .catch(() => "");
+          const detectedRulesKey =
+            detectQuestionnaireRulesKeyFromText(pageText);
           if (detectedRulesKey) {
             process.env.OVERRIDE_ACTIVE_CONDITION = detectedRulesKey;
             runtimeRulesOverrideApplied = true;
@@ -983,13 +1029,15 @@ async function runConditionFlowImpl(
 
         if (hasEmail) {
           const useRecoveryValues = Boolean(
-            (user as {
-              triggerContactRecovery?: boolean;
-              newEmail?: string;
-              confirmNewEmail?: string;
-              newPhone?: string;
-              confirmNewPhone?: string;
-            }).triggerContactRecovery,
+            (
+              user as {
+                triggerContactRecovery?: boolean;
+                newEmail?: string;
+                confirmNewEmail?: string;
+                newPhone?: string;
+                confirmNewPhone?: string;
+              }
+            ).triggerContactRecovery,
           );
           const resolvedEmail = useRecoveryValues
             ? (user as { newEmail?: string }).newEmail || user.email

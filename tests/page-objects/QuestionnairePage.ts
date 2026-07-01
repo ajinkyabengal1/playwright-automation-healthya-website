@@ -1236,6 +1236,56 @@ export class QuestionnairePage {
     return startVal.replace(/[^\d]/g, "").length >= 8;
   }
 
+  /**
+   * Types a random letter into an AntD searchable Select, waits for options
+   * to load, then clicks the first available option.
+   */
+  private async fillSearchableDropdown(
+    _wrapper: ReturnType<Page["locator"]>,
+    searchInput: ReturnType<Page["locator"]>,
+    index: number,
+  ): Promise<boolean> {
+    console.log(`[QuestionnairePage] Filling searchable dropdown #${index}`);
+    await searchInput.scrollIntoViewIfNeeded().catch(() => {});
+    await searchInput.click({ force: true }).catch(() => {});
+    await this.page.waitForTimeout(300);
+
+    const letters = ["a", "e", "i", "s", "m", "b", "c"];
+    const letter = letters[Math.floor(Math.random() * letters.length)];
+    await searchInput.fill(letter).catch(() => {});
+    console.log(`[QuestionnairePage] Dropdown #${index} — typed "${letter}", waiting for options`);
+
+    const dropdown = this.page
+      .locator(".ant-select-dropdown")
+      .filter({ hasNot: this.page.locator(".ant-select-dropdown-hidden") })
+      .last();
+    await dropdown.waitFor({ state: "visible", timeout: 6000 }).catch(() => {});
+    await this.page.waitForTimeout(1000); // allow async API data to finish loading
+
+    const options = dropdown.locator(
+      ".ant-select-item-option:not(.ant-select-item-option-disabled)",
+    );
+    const optCount = await options.count().catch(() => 0);
+
+    if (optCount > 0) {
+      const opt = options.first();
+      if (await opt.isVisible().catch(() => false)) {
+        await opt.scrollIntoViewIfNeeded().catch(() => {});
+        await opt.click({ force: true }).catch(async () => {
+          await opt.evaluate((el: HTMLElement) => el.click());
+        });
+        await this.page.waitForTimeout(500);
+        console.log(`[QuestionnairePage] Dropdown #${index} — option selected`);
+        return true;
+      }
+    }
+
+    await this.page.keyboard.press("Escape").catch(() => {});
+    await this.page.waitForTimeout(300);
+    console.log(`[QuestionnairePage] Dropdown #${index} — no options loaded for "${letter}"`);
+    return false;
+  }
+
   private getActiveQuestionScope() {
     return this.page
       .locator(
@@ -1605,6 +1655,25 @@ export class QuestionnairePage {
       }
       await this.fillRevealedSubInputs();
       return true;
+    }
+
+    // ── Searchable dropdown (.dropdown-question-wrapper) ─────────────────────
+    const ddWrappersLegacy = this.page.locator(".dropdown-question-wrapper:visible");
+    const ddCountLegacy = await ddWrappersLegacy.count().catch(() => 0);
+    for (let i = 0; i < ddCountLegacy; i++) {
+      const wrapper = ddWrappersLegacy.nth(i);
+      if (!(await wrapper.isVisible().catch(() => false))) continue;
+      const selectionItem = wrapper.locator(".ant-select-selection-item").first();
+      if (await selectionItem.isVisible().catch(() => false)) {
+        const txt = (await selectionItem.textContent().catch(() => ""))?.trim() ?? "";
+        if (txt) continue;
+      }
+      const searchInput = wrapper
+        .locator("input.ant-select-selection-search-input, input[type='search']")
+        .first();
+      if (!(await searchInput.isVisible().catch(() => false))) continue;
+      const filled = await this.fillSearchableDropdown(wrapper, searchInput, i + 1);
+      if (filled) return true;
     }
 
     // Numerical input — detect context (height vs weight vs generic)
@@ -2229,7 +2298,12 @@ export class QuestionnairePage {
 
     // No wrapper structure at all → legacy single-question path
     const wrapperCount = await this.page
-      .locator(".questionnaire-answer-wrapper")
+      .locator([
+        ".questionnaire-answer-wrapper",
+        ".dropdown-question-wrapper",
+        ".numerical-question-wrapper",
+        ".textarea-question-wrapper",
+      ].join(", "))
       .count()
       .catch(() => 0);
     if (wrapperCount === 0) {
@@ -2545,6 +2619,25 @@ export class QuestionnairePage {
       return this.fillDateByRule(
         this.shouldUseRandomAnswers() ? this.randomDate() : "01-01-2020",
       );
+    }
+
+    // ── Searchable dropdown questions (.dropdown-question-wrapper) ────────────
+    const dropdownWrappers = this.page.locator(".dropdown-question-wrapper:visible");
+    const ddCount = await dropdownWrappers.count().catch(() => 0);
+    for (let i = 0; i < ddCount; i++) {
+      const wrapper = dropdownWrappers.nth(i);
+      if (!(await wrapper.isVisible().catch(() => false))) continue;
+      const selectionItem = wrapper.locator(".ant-select-selection-item").first();
+      if (await selectionItem.isVisible().catch(() => false)) {
+        const txt = (await selectionItem.textContent().catch(() => ""))?.trim() ?? "";
+        if (txt) continue; // already has a selected value
+      }
+      const searchInput = wrapper
+        .locator("input.ant-select-selection-search-input, input[type='search']")
+        .first();
+      if (!(await searchInput.isVisible().catch(() => false))) continue;
+      const filled = await this.fillSearchableDropdown(wrapper, searchInput, i + 1);
+      if (filled) return true;
     }
 
     // ── Number inputs ───────────────────────────────────────────────────────

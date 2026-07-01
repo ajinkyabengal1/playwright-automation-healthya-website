@@ -719,6 +719,33 @@ export class BookingPage {
   }
 
   /**
+   * Wait until the "Select next available slot" radio row is present in the DOM.
+   * The booking page renders its container immediately but populates slot options
+   * via a follow-up API call, so we must wait for that data before interacting.
+   */
+  private async waitForNextAvailableSlotVisible(): Promise<void> {
+    const selectors = [
+      ':text("Select next available slot")',
+      ':text("select next available slot")',
+      'label:has-text("next available")',
+      '[class*="slot"]:has-text("next available")',
+      'input[type="radio"] + * :text("next available")',
+    ].join(", ");
+
+    try {
+      await this.page
+        .locator(selectors)
+        .first()
+        .waitFor({ state: "visible", timeout: 20_000 });
+      console.log("[BookingPage] 'Select next available slot' element is visible");
+    } catch {
+      console.log(
+        "[BookingPage] Timed out waiting for 'Select next available slot' to appear — proceeding anyway",
+      );
+    }
+  }
+
+  /**
    * Locate and click the "Select next available slot" radio using a
    * multi-strategy DOM walk. The row is a custom styled element (not a
    * standard Ant Design radio), so we must find the <input type="radio">
@@ -922,9 +949,10 @@ export class BookingPage {
 
     if (prefs.useNextAvailableSlot) {
       console.log(
-        "ℹ useNextAvailableSlot is true — attempting to select 'Select next available slot'",
+        "ℹ useNextAvailableSlot is true — waiting for slot data to load, then selecting 'Select next available slot'",
       );
 
+      await this.waitForNextAvailableSlotVisible();
       const clicked = await this.clickNextAvailableSlotRadio();
 
       if (!clicked) {
